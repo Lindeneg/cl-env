@@ -316,6 +316,26 @@ describe("loadEnv", () => {
             );
             expect(result).toEqual({ok: true, data: {PORT: 8080}});
         });
+
+        it("applies transformKeys to default values for missing keys", () => {
+            mockFile(envFile("OTHER=value"));
+            const result = loadEnv(
+                {path: ".env", transformKeys: true},
+                {MY_PORT: withDefault(toInt, 3000)}
+            );
+            expect(result).toEqual({ok: true, data: {myPort: 3000}});
+        });
+    });
+
+    describe("missing keys without wrappers", () => {
+        it("plain toString succeeds with empty string for missing key", () => {
+            mockFile(envFile("OTHER=value"));
+            const result = loadEnv(
+                {path: ".env", transformKeys: false},
+                {FOO: toString}
+            );
+            expect(result).toEqual({ok: true, data: {FOO: ""}});
+        });
     });
 
     describe("toString", () => {
