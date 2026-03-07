@@ -1,0 +1,142 @@
+# clenv
+
+Strongly typed env file loading for Node.js.
+
+Reads `KEY=VALUE` files and returns a fully typed object, no `process.env` mutation.
+
+```ts
+import { loadEnv, unwrap, toString, toInt, toBool, withDefault, withRequired } from "clenv";
+
+const env = unwrap(
+    loadEnv(
+        { path: ".env", transformKeys: false },
+        {
+            DATABASE_URL: withRequired(toString),
+            PORT: withDefault(toInt, 3000),
+            DEBUG: toBool,
+        }
+    )
+);
+
+// env is fully typed:
+// { DATABASE_URL: string, PORT: number, DEBUG: boolean }
+
+// if `transformKeys` is set to `true`, then env is typed as:
+// { databaseUrl: string, port: number, debug: boolean }
+```
+
+## Features
+
+- **Strongly typed** — return type is inferred from your config. Transforms, defaults, and key casing are all reflected in the types.
+- **No `process.env` mutation** — returns a plain object. Secrets stay out of child processes.
+- **Composable transforms** — combine `withRequired`, `withDefault`, and transform functions or write your own.
+- **Key transformation** — optionally converts `UPPER_SNAKE_CASE` keys to `camelCase`, with full type-level support.
+- **Quote handling** — strips surrounding `"`, `'`, and `` ` `` from values. Expands `\n` and `\r` escapes inside double quotes.
+
+## API
+
+### `loadEnv(opts, config)`
+
+Reads and parses an env file. Returns a `Result`.
+
+```ts
+const result = loadEnv(
+    { path: ".env", transformKeys: false },
+    {
+        API_KEY: withRequired(toString),
+        PORT: withDefault(toInt, 8080),
+    }
+);
+
+if (!result.ok) {
+    console.error(result.ctx); // string[] of errors
+    process.exit(1);
+}
+
+console.log(result.data.API_KEY); // string
+console.log(result.data.PORT);    // number
+```
+
+**Options:**
+
+| Option | Type | Description |
+|---|---|---|
+| `path` | `string \| string[]` | Path to the env file. Arrays are passed to `path.join`. |
+| `transformKeys` | `boolean` | Convert `UPPER_SNAKE_CASE` keys to `camelCase`. |
+| `encoding` | `BufferEncoding` | File encoding. Defaults to `"utf8"`. |
+
+### Transform functions
+
+Each config value is a transform function `(key: string, value: string) => Result<T>`. The return type determines the type of that key in the result.
+
+#### Built-in transforms
+
+| Transform | Output type | Description |
+|---|---|---|
+| `toString` | `string` | Returns the value as-is. |
+| `toInt` | `number` | Parses an integer. Fails on non-numeric input. |
+| `toFloat` | `number` | Parses a float. Fails on non-numeric input. |
+| `toBool` | `boolean` | `"true"`, `"TRUE"`, `"1"` → `true`, everything else → `false`. |
+| `toJSON<T>()` | `T` | Parses JSON. Fails on invalid input but does NOT validate schema.|
+| `toStringArray(delimiter?)` | `string[]` | Splits by delimiter (default `","`). |
+| `toIntArray(delimiter?)` | `number[]` | Splits and parses each element as an integer. |
+
+#### Wrappers
+
+| Wrapper | Description |
+|---|---|
+| `withRequired(transform)` | Fails if the value is empty or the key is missing from the file. |
+| `withDefault(transform, defaultValue)` | Uses `defaultValue` when the value is empty or the key is missing. |
+
+#### Custom transforms
+
+Write your own:
+
+```ts
+import { loadEnv, unwrap, success, failure } from "clenv";
+
+const env = unwrap(
+    loadEnv(
+        { path: ".env", transformKeys: false },
+        {
+            ALLOWED_ORIGINS: (_, v) => success(v.split(",").map(s => s.trim())),
+            LOG_LEVEL: (key, v) => {
+                if (["debug", "info", "warn", "error"].includes(v)) return success(v);
+                return failure(`${key}: invalid log level '${v}'`);
+            },
+        }
+    )
+);
+```
+
+## Parsing rules
+
+- Lines are split on the first `=`. Keys and values are trimmed.
+- Empty lines and lines without `=` are skipped.
+- Keys not in your config are ignored.
+- Surrounding quotes (`"`, `'`, `` ` ``) are stripped from values.
+- `\n` and `\r` are expanded inside double-quoted values only.
+- `\r\n` and `\r` line endings are normalized.
+
+## Error handling
+
+Errors are accumulated. If multiple keys fail validation, you get all errors at once:
+
+```ts
+const result = loadEnv(
+    { path: ".env", transformKeys: false },
+    {
+        PORT: withRequired(toInt),
+        API_KEY: withRequired(toString),
+        DB_HOST: withRequired(toString),
+    }
+);
+
+if (!result.ok) {
+    // result.ctx: ["PORT: is required but is missing", "API_KEY: is required but is missing"]
+}
+```
+
+## License
+
+MIT
