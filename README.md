@@ -11,7 +11,7 @@ Env file loading for Node.js.
 
 #### Install
 
-`npm i --save-dev @lindeneg/cl-env`
+`npm i @lindeneg/cl-env`
 
 #### Example
 
