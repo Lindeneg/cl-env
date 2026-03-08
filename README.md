@@ -104,7 +104,7 @@ const env = unwrap(
 `toJSON` accepts an optional schema argument. To use it, register a schema parser first:
 
 ```ts
-import { schemaParser, loadEnv, unwrap, toJSON, toString, withRequired } from "@lindeneg/cl-env";
+import { schemaParser, loadEnv, unwrap, success, failure, toJSON, toString, withRequired } from "@lindeneg/cl-env";
 
 // Register your parser once, then chain into loadEnv
 const env = unwrap(
