@@ -211,7 +211,7 @@ export function toJSON<T>(schema?: unknown) {
                 const parser = schemaParser.get();
                 if (!parser) {
                     return failure(
-                        `${k}: schema provided but no schemaParser is set.` +
+                        `${k}: schema provided but no schemaParser is set. ` +
                             "Please use '.schemaParser.set(...).loadEnv(...)'"
                     );
                 }
