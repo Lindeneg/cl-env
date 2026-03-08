@@ -60,6 +60,10 @@ export function loadEnv<TOpts extends LoadEnvOpts, TEnv extends {[key: string]: 
     for (let line of lines) {
         line = line.trim();
         if (!line) continue;
+        // skip commented lines
+        if (line.startsWith("#")) continue;
+        // strip export (for bash compatibility)
+        if (line.startsWith("export ")) line = line.slice(7);
         const eqIdx = line.indexOf("=");
         if (eqIdx === -1) continue;
         let [key, value] = [line.slice(0, eqIdx).trim(), line.slice(eqIdx + 1).trim()];
