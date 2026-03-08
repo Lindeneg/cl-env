@@ -1,5 +1,6 @@
 # cl-env
 
+
 Env file loading for Node.js.
 
 - **Strongly typed** — return type is inferred from your config. Transforms, defaults, and key casing are all reflected in the types.
@@ -8,8 +9,14 @@ Env file loading for Node.js.
 - **No `process.env` mutation** — returns a plain object. Secrets stay out of child processes.
 - **Quote handling** — strips surrounding `"`, `'`, and `` ` `` from values. Expands `\n` and `\r` escapes inside double quotes.
 
+#### Install
+
+`npm i --save-dev @lindeneg/cl-env`
+
+#### Example
+
 ```ts
-import { loadEnv, unwrap, toString, toInt, toBool, withDefault, withRequired } from "clenv";
+import { loadEnv, unwrap, toString, toInt, toBool, withDefault, withRequired } from "@lindeneg/cl-env";
 
 const env = unwrap(
     loadEnv(
@@ -76,7 +83,7 @@ Each config value is a transform function `(key: string, value: string) => Resul
 Write your own:
 
 ```ts
-import { loadEnv, unwrap, success, failure } from "clenv";
+import { loadEnv, unwrap, success, failure } from "@lindeneg/cl-env";
 
 const env = unwrap(
     loadEnv(
