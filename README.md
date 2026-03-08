@@ -5,7 +5,7 @@ Type-safe, leak-free .env loading for Node.js.
 - **Full type inference**
     - return type is derived from your config. Transforms, defaults, key casing, **all reflected at the type level**.
 - **No exceptions**
-    - every operation returns a `Result<T, E>`. Errors are accumulated, never thrown.
+    - every operation returns a `Result<T, E>`. Errors are accumulated, never thrown, unless `unwrap` is called.
 - **No `process.env` mutation**
     - returns a plain object. Secrets stay out of child processes.
 - **Proper dotenv parser**
