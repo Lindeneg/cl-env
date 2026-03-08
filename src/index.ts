@@ -1,7 +1,5 @@
 import {join as nodeJoin} from "node:path";
 import {readFileSync} from "node:fs";
-// JUST IMPORT FOR SOME TESTING CODE IGNORE
-import {ProcessEventMap} from "node:process";
 
 export type LoadEnvOpts = {
     files: string[];
@@ -9,21 +7,21 @@ export type LoadEnvOpts = {
     basePath?: string;
     encoding?: BufferEncoding;
     includeProcessEnv?: boolean | "overwrite";
-    log?: boolean;
+    logger?: Logger | boolean;
     schemaParser?: SchemaParser;
     radix?: RadixFn;
 };
 
-export function loadEnv<TOpts extends LoadEnvOpts, TEnv extends {[key: string]: TransformFn}>(
+export function loadEnv<TOpts extends LoadEnvOpts, TConfig extends Config>(
     opts: TOpts,
-    config: TEnv
+    config: TConfig
 ): Result<
     {
-        [K in keyof TEnv as TOpts["transformKeys"] extends true
+        [K in keyof TConfig as TOpts["transformKeys"] extends true
             ? K extends string
                 ? SafeCamelCase<K>
                 : K
-            : K]: InferValueFromTransformFn<TEnv[K]>;
+            : K]: InferValueFromTransformFn<TConfig[K]>;
     },
     string[]
 > {
@@ -32,68 +30,31 @@ export function loadEnv<TOpts extends LoadEnvOpts, TEnv extends {[key: string]: 
     const rawEnv: Record<string, unknown> = {};
     const seenKeys = new Set<string>();
 
+    const log: Logger | undefined =
+        typeof opts.logger === "function"
+            ? opts.logger
+            : opts.logger === true
+              ? defaultLogger
+              : undefined;
+
     const ctx: TransformContext = {
         rawEnv,
         ...(opts.schemaParser && {schemaParser: opts.schemaParser}),
         ...(opts.radix && {radix: opts.radix}),
+        ...(log && {log}),
     };
 
-    // ── 1. Parse all files ──
-    const allEntries: ParsedEntry[] = [];
-    for (let filePath of opts.files) {
-        if (opts.basePath) {
-            filePath = nodeJoin(opts.basePath, filePath);
-        }
-        const fileResult = readFile(filePath, opts.encoding ?? "utf8");
-        if (fileResult.ok) {
-            allEntries.push(...parseDotenv(fileResult.data));
-        } else {
-            errors.push(fileResult.ctx);
-        }
-    }
+    const allEntries = parseAllFiles(opts.files, errors, log, opts.basePath, opts.encoding);
+    const deduped = deduplicate(allEntries, log);
 
-    // ── 2. Deduplicate (last-wins) ──
-    const deduped = new Map<string, ParsedEntry>();
-    for (const entry of allEntries) {
-        if (opts.log && deduped.has(entry.key)) {
-            console.warn(`${entry.key}:L${entry.line}: duplicate key, overwriting previous value.`);
-        }
-        deduped.set(entry.key, entry);
-    }
+    if (log) checkUnknownKeys(deduped, config, log);
 
-    if (opts.log) {
-        for (const [key, entry] of deduped) {
-            if (!config[key]) {
-                console.warn(`${key}:L${entry.line}: not a known key.`);
-            }
-        }
-    }
+    const expanded = expandEntries(deduped, log);
 
-    // ── 3. Expand (skip single-quoted values) ──
-    const expanded = new Map<string, string>();
-    for (const [key, entry] of deduped) {
-        if (entry.quoted === "'") {
-            expanded.set(key, entry.value);
-        } else {
-            expanded.set(key, expand(entry.value, expanded, process.env));
-        }
-    }
-
-    // ── 4. Merge process.env ──
     if (opts.includeProcessEnv) {
-        for (const key of Object.keys(config)) {
-            const pVal = process.env[key];
-            if (pVal === undefined) continue;
-
-            if (opts.includeProcessEnv === "overwrite") {
-                expanded.set(key, pVal);
-            } else if (!expanded.has(key)) {
-                expanded.set(key, pVal);
-            }
-        }
+        mergeProcessEnv(expanded, opts.includeProcessEnv, config, log);
     }
 
-    // ── 5. Run transforms ──
     function setVal(key: string, value: unknown) {
         const finalKey = opts.transformKeys ? toCamelCase(key) : key;
         (env as any)[finalKey] = value;
@@ -120,13 +81,14 @@ export function loadEnv<TOpts extends LoadEnvOpts, TEnv extends {[key: string]: 
         }
     }
 
-    // ── 6. Handle unseen keys ──
+    // handle unseen keys
     const cfgEntries = Object.entries(config);
     if (seenKeys.size < cfgEntries.length) {
         for (const [cfgKey, cfgFn] of cfgEntries) {
             if (seenKeys.has(cfgKey)) continue;
             const result = cfgFn(cfgKey, "", ctx);
             if (result.ok) {
+                log?.("debug", `${cfgKey}: not found in any file, using default`);
                 setVal(cfgKey, result.data);
             } else {
                 errors.push(result.ctx);
@@ -136,8 +98,16 @@ export function loadEnv<TOpts extends LoadEnvOpts, TEnv extends {[key: string]: 
 
     if (errors.length) return failure(errors);
 
+    log?.(
+        "debug",
+        `loaded ${seenKeys.size} keys from ${opts.files.length} file(s) (${opts.files.join(", ")})`
+    );
+
     return success(env as any);
 }
+
+export type LogLevel = "error" | "warn" | "debug" | "verbose";
+export type Logger = (level: LogLevel, message: string) => void;
 
 export type SchemaParser<TSchema = any, TReturn = any> = (
     obj: unknown,
@@ -257,6 +227,8 @@ export function withRequired<TTransform extends TransformFn>(transform: TTransfo
     };
 }
 
+type Config = Record<string, TransformFn>;
+
 type CamelCase<S extends string> = S extends `${infer Head}_${infer Tail}`
     ? `${Lowercase<Head>}${PascalTail<Tail>}`
     : Lowercase<S>;
@@ -273,6 +245,7 @@ type TransformContext = {
     rawEnv: Record<string, unknown>;
     schemaParser?: SchemaParser;
     radix?: RadixFn;
+    log?: Logger;
 };
 
 type TransformFn<TData = any> = (
@@ -283,6 +256,12 @@ type TransformFn<TData = any> = (
 
 type InferValueFromTransformFn<TTransform extends TransformFn> =
     ReturnType<TTransform> extends Result<infer TData> ? TData : never;
+
+function defaultLogger(level: LogLevel, message: string) {
+    console[level === "error" ? "error" : level === "warn" ? "warn" : "debug"](
+        `[cl-env:${level}] ${message}`
+    );
+}
 
 function readFile(path: string, encoding: BufferEncoding): Result<string> {
     try {
@@ -309,6 +288,96 @@ function toNumber(key: string, v: string, ctx: TransformContext, parser: "int" |
     return success(n);
 }
 
+function parseAllFiles(
+    files: string[],
+    errors: string[],
+    log?: Logger,
+    basePath?: string,
+    encoding?: BufferEncoding
+) {
+    const allEntries: ParsedEntry[] = [];
+    for (let filePath of files) {
+        if (basePath) {
+            filePath = nodeJoin(basePath, filePath);
+        }
+        const fileResult = readFile(filePath, encoding ?? "utf8");
+        if (fileResult.ok) {
+            const {entries, warnings} = parseDotenv(fileResult.data);
+            allEntries.push(...entries);
+            log?.("verbose", `loaded file: ${filePath} (${entries.length} entries)`);
+            if (log) {
+                for (const w of warnings) {
+                    log("warn", w.message);
+                }
+            }
+        } else {
+            log?.("verbose", `failed to read file: ${filePath}`);
+            errors.push(fileResult.ctx);
+        }
+    }
+    return allEntries;
+}
+
+function deduplicate(allEntries: ParsedEntry[], log?: Logger) {
+    const deduped = new Map<string, ParsedEntry>();
+    for (const entry of allEntries) {
+        if (log && deduped.has(entry.key)) {
+            log("warn", `${entry.key}:L${entry.line}: duplicate key, overwriting previous value.`);
+        }
+        deduped.set(entry.key, entry);
+    }
+    return deduped;
+}
+
+function expandEntries(deduped: Map<string, ParsedEntry>, log?: Logger) {
+    const expanded = new Map<string, string>();
+    for (const [key, entry] of deduped) {
+        if (entry.quoted === "'") {
+            expanded.set(key, entry.value);
+        } else {
+            const expandedValue = expand(entry.value, expanded, process.env);
+            if (log && expandedValue !== entry.value) {
+                log(
+                    "verbose",
+                    `${key}:L${entry.line}: expanded "${entry.value}" → "${expandedValue}"`
+                );
+            }
+            expanded.set(key, expandedValue);
+        }
+    }
+    return expanded;
+}
+
+function checkUnknownKeys(deduped: Map<string, ParsedEntry>, config: Config, log: Logger) {
+    for (const [key, entry] of deduped) {
+        if (!config[key]) {
+            log("warn", `${key}:L${entry.line}: not a known key.`);
+        }
+    }
+}
+
+function mergeProcessEnv(
+    expanded: Map<string, string>,
+    includeProcessEnv: boolean | "overwrite",
+    config: Config,
+    log?: Logger
+) {
+    const mode = includeProcessEnv === "overwrite" ? "overwrite" : "fallback";
+    log?.("debug", `merging process.env as ${mode}`);
+    for (const key of Object.keys(config)) {
+        const pVal = process.env[key];
+        if (pVal === undefined) continue;
+
+        if (includeProcessEnv === "overwrite") {
+            log?.("verbose", `${key}: process.env overwriting file value`);
+            expanded.set(key, pVal);
+        } else if (!expanded.has(key)) {
+            log?.("verbose", `${key}: using value from process.env`);
+            expanded.set(key, pVal);
+        }
+    }
+}
+
 type ParsedEntry = {
     key: string;
     value: string;
@@ -316,7 +385,12 @@ type ParsedEntry = {
     quoted?: '"' | "'" | "`";
 };
 
-function parseDotenv(raw: string): ParsedEntry[] {
+type ParseWarning = {
+    line: number;
+    message: string;
+};
+
+function parseDotenv(raw: string): {entries: ParsedEntry[]; warnings: ParseWarning[]} {
     // strip BOM
     if (raw.charCodeAt(0) === 0xfeff) {
         raw = raw.slice(1);
@@ -325,6 +399,7 @@ function parseDotenv(raw: string): ParsedEntry[] {
     raw = raw.replace(/\r\n?/g, "\n");
 
     const entries: ParsedEntry[] = [];
+    const warnings: ParseWarning[] = [];
     let pos = 0;
     let line = 1;
 
@@ -464,6 +539,12 @@ function parseDotenv(raw: string): ParsedEntry[] {
                 value += raw[pos];
                 pos++;
             }
+            if (value !== value.trimEnd()) {
+                warnings.push({
+                    line: entryLine,
+                    message: `${key}:L${entryLine}: suspicious trailing whitespace in unquoted value.`,
+                });
+            }
             value = value.trimEnd();
         }
 
@@ -474,7 +555,7 @@ function parseDotenv(raw: string): ParsedEntry[] {
         entries.push({key, value, line: entryLine, ...(quoted && {quoted})});
     }
 
-    return entries;
+    return {entries, warnings};
 }
 
 function expand(
@@ -488,20 +569,19 @@ function expand(
     });
 }
 
-// TEST CODE JUST TO CHECK IT WORKS HERE IN THE EDITOR; JUST DISGARD WILL BE REMOVED!!
-
+// TEST CODE IGNORE
 class Foo {}
 
 const k = unwrap(
     loadEnv(
-        {files: [".env"], transformKeys: true},
+        {files: [".env"], transformKeys: false},
         {
             DATABASE_URL: withRequired(toString),
             PORT: withDefault(toInt, 3000),
             RANGE_VALUES: toIntArray(),
             GOOGLE_ID: toString,
             GOOGLE_MID: toString,
-            PROCESS_TEST: toJSON<ProcessEventMap>(),
+            PROCESS_TEST: toJSON<LoadEnvOpts>(),
             CUSTOM_STUFF_THING: withRequired((k, v) => {
                 return success(new Foo());
             }),
