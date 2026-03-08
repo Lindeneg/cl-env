@@ -568,23 +568,3 @@ function expand(
         return resolved.get(name) ?? env[name] ?? "";
     });
 }
-
-// TEST CODE IGNORE
-class Foo {}
-
-const k = unwrap(
-    loadEnv(
-        {files: [".env"], transformKeys: false},
-        {
-            DATABASE_URL: withRequired(toString),
-            PORT: withDefault(toInt, 3000),
-            RANGE_VALUES: toIntArray(),
-            GOOGLE_ID: toString,
-            GOOGLE_MID: toString,
-            PROCESS_TEST: toJSON<LoadEnvOpts>(),
-            CUSTOM_STUFF_THING: withRequired((k, v) => {
-                return success(new Foo());
-            }),
-        }
-    )
-);
