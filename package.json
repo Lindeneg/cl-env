@@ -1,5 +1,5 @@
 {
-    "name": "clenv",
+    "name": "cl-env",
     "version": "0.0.1",
     "description": "Type-safe, leak-free environment variable loader",
     "type": "module",
@@ -19,7 +19,7 @@
         "node": ">=18"
     },
     "scripts": {
-        "prepublishOnly": "npm run test && npm run build",
+        "prepublishOnly": "rm -rf ./dist && npm run test && npm run build",
         "build": "tsc -p tsconfig.build.json",
         "test": "npm run test:impl && npm run test:types",
         "test:impl": "vitest run",
@@ -37,9 +37,9 @@
     "author": "Christian Lindeneg",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/lindeneg/clenv.git"
+        "url": "git+https://github.com/lindeneg/cl-env.git"
     },
-    "homepage": "https://github.com/lindeneg/clenv#readme",
+    "homepage": "https://github.com/lindeneg/cl-env#readme",
     "license": "MIT",
     "devDependencies": {
         "@types/node": "25.3.5",
