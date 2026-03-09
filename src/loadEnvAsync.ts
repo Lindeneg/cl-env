@@ -4,6 +4,23 @@ import {resolveEnv, resolveLogger, type LoadEnvOpts, type ResolveEnvResult} from
 import type {EnvError} from "./result.js";
 import type {Config} from "./types.js";
 
+async function readEnvFile(
+    file: string,
+    encoding: BufferEncoding,
+    basePath?: string
+): Promise<{file: string; content: string} | {file: string; error: string}> {
+    const fullPath = basePath ? nodeJoin(basePath, file) : file;
+    try {
+        const content = await readFile(fullPath, {encoding});
+        return {file, content};
+    } catch (err) {
+        return {
+            file,
+            error: `failed to read '${fullPath}': ${err instanceof Error ? ((err as NodeJS.ErrnoException).code ?? err.message) : String(err)}`,
+        };
+    }
+}
+
 export async function loadEnvAsync<const TOpts extends LoadEnvOpts, TConfig extends Config>(
     opts: TOpts,
     config: TConfig
@@ -13,31 +30,29 @@ export async function loadEnvAsync<const TOpts extends LoadEnvOpts, TConfig exte
     const fileErrors: EnvError[] = [];
     const log = resolveLogger(opts.logger);
 
-    const reads = opts.files.map(async (file) => {
-        const fullPath = opts.basePath ? nodeJoin(opts.basePath, file) : file;
-        try {
-            const content = await readFile(fullPath, {encoding});
-            return {file, content} as const;
-        } catch (err: any) {
-            log?.("verbose", `failed to read file: ${fullPath}`);
-            return {
-                file,
-                error: `failed to read '${fullPath}': ${err?.code ?? (err instanceof Error ? err.message : String(err))}`,
-            } as const;
-        }
-    });
+    const allReads = [
+        ...opts.files.map((file) => ({file, required: true as const})),
+        ...(opts.optionalFiles ?? []).map((file) => ({file, required: false as const})),
+    ];
 
-    const results = await Promise.all(reads);
+    const results = await Promise.all(
+        allReads.map(async ({file, required}) => ({
+            ...(await readEnvFile(file, encoding, opts.basePath)),
+            required,
+        }))
+    );
 
     for (const result of results) {
         if ("content" in result) {
             fileContents.set(result.file, result.content);
+        } else if (result.required) {
+            log?.(
+                "verbose",
+                `failed to read file: ${opts.basePath ? nodeJoin(opts.basePath, result.file) : result.file}`
+            );
+            fileErrors.push({key: result.file, source: result.file, message: result.error});
         } else {
-            fileErrors.push({
-                key: result.file,
-                source: result.file,
-                message: result.error,
-            });
+            log?.("debug", `optional file not found, skipping: ${result.file}`);
         }
     }
 

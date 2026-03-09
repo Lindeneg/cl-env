@@ -14,6 +14,7 @@ import type {
 
 export type LoadEnvOpts = {
     files: string[];
+    optionalFiles?: string[];
     transformKeys: boolean;
     basePath?: string;
     encoding?: BufferEncoding;
@@ -60,10 +61,7 @@ export function parseFileContents(
 ): ParsedEntry[] {
     const allEntries: ParsedEntry[] = [];
     for (const [file, content] of fileContents) {
-        const {entries, warnings} = parseDotenv(content);
-        for (const entry of entries) {
-            entry.source = file;
-        }
+        const {entries, warnings} = parseDotenv(content, file);
         allEntries.push(...entries);
         log?.("verbose", `parsed ${file}: ${entries.length} entries`);
         if (log) {
@@ -81,15 +79,31 @@ export function resolveEnv<const TOpts extends LoadEnvOpts, TConfig extends Conf
     fileContents: Map<string, string>,
     fileErrors: EnvError[]
 ): ResolveEnvResult<TOpts, TConfig> {
+    const hasFiles = opts.files.length > 0;
+    const hasOptional = (opts.optionalFiles?.length ?? 0) > 0;
+    const hasProcessEnv =
+        opts.includeProcessEnv === "fallback" || opts.includeProcessEnv === "override";
+
+    if (!hasFiles && !hasOptional && !hasProcessEnv) {
+        return failure([
+            {
+                key: "files",
+                source: "none",
+                message:
+                    "no sources configured: files is empty, no optionalFiles, and includeProcessEnv is disabled",
+            },
+        ]);
+    }
+
     const errors: EnvError[] = [...fileErrors];
     const env: Record<string, unknown> = {};
-    const rawEnv: Record<string, string> = {};
+    const expandedEnv: Record<string, string> = {};
     const seenKeys = new Set<string>();
 
     const log = resolveLogger(opts.logger);
 
     const baseCtx: TransformContext = {
-        rawEnv,
+        expandedEnv,
         ...(opts.schemaParser && {schemaParser: opts.schemaParser}),
         ...(opts.radix && {radix: opts.radix}),
         ...(log && {log}),
@@ -107,9 +121,9 @@ export function resolveEnv<const TOpts extends LoadEnvOpts, TConfig extends Conf
         mergeProcessEnv(expanded, opts.includeProcessEnv, config, log);
     }
 
-    // populate rawEnv from expanded values before any transforms run
+    // populate expandedEnv from expanded values before any transforms run
     for (const [key, value] of expanded) {
-        rawEnv[key] = value;
+        expandedEnv[key] = value;
     }
 
     function setVal(key: string, value: unknown) {
@@ -317,24 +331,24 @@ function mergeProcessEnv(
 }
 
 class SourceMap {
-    private _values = new Map<string, string>();
-    private _sources = new Map<string, string>();
+    private _entries = new Map<string, {value: string; source: string}>();
 
     set(key: string, value: string, source: string) {
-        this._values.set(key, value);
-        this._sources.set(key, source);
+        this._entries.set(key, {value, source});
     }
     get(key: string) {
-        return this._values.get(key);
+        return this._entries.get(key)?.value;
     }
     has(key: string) {
-        return this._values.has(key);
+        return this._entries.has(key);
     }
     getSource(key: string) {
-        return this._sources.get(key);
+        return this._entries.get(key)?.source;
     }
-    [Symbol.iterator]() {
-        return this._values[Symbol.iterator]();
+    *[Symbol.iterator](): IterableIterator<[string, string]> {
+        for (const [key, {value}] of this._entries) {
+            yield [key, value];
+        }
     }
 }
 
