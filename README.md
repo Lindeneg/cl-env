@@ -1,8 +1,6 @@
 # cl-env
 
-Type-safe dotenv replacement with composable validation and zero runtime dependencies.
-
-Load `.env` files, validate values with composable transforms, and produce a **fully typed** configuration object.
+Load `.env` files, validate values with composable transforms, and produce a **fully typed** configuration object, all with zero runtime dependencies.
 
 - **Full type inference** — transforms, defaults, key casing all reflected at the type level.
 - **Proper dotenv parser** — multiline values, escape sequences, variable expansion, inline comments, layered files.
@@ -16,6 +14,20 @@ Load `.env` files, validate values with composable transforms, and produce a **f
 ```
 npm i @lindeneg/cl-env
 ```
+
+## Why cl-env?
+
+Most type-safe env solutions validate `process.env` but something else has to populate it first
+(usually `dotenv`, which mutates the global object). If you also want variable expansion, you add
+`dotenv-expand`. Layered files? `dotenv-flow`. That's three packages before you write a single
+validation rule.
+
+`cl-env` handles the entire pipeline, parsing, expansion, layering, validation, and typing, in
+one dependency, returning a plain object. `process.env` is never written to and only read if you
+explicitly opt in.
+
+If your stack already populates `process.env` for you (Next.js, Nuxt, Vite, etc.), libraries like
+[t3-env](https://env.t3.gg) or [envalid](https://github.com/af/envalid) are great choices and purpose-built for that model. `cl-env` is for when you want to own the full loading pipeline yourself.
 
 ## Quick start
 
@@ -80,9 +92,11 @@ You control how missing variables behave:
 
 | Wrapper | Behavior |
 |---|---|
-| `withRequired(transform)` | Fails if key is missing — empty values pass through to the transform |
-| `withDefault(transform, defaultValue)` | Uses `defaultValue` when key is missing — empty values pass through |
-| `withOptional(transform)` | Returns `undefined` when key is missing, otherwise delegates to the transform |
+| `withRequired(transform)` | Fails if key is missing, otherwise delegates to the transform |
+| `withDefault(transform, defaultValue)` | Uses `defaultValue` if key is missing, otherwise delegates to the transform |
+| `withOptional(transform)` | Returns `undefined` if key is missing, otherwise delegates to the transform |
+
+A key is "missing" when it doesn't appear in any file (or `process.env`, if merged), its value is `undefined`. A key with an empty value (`KEY=`) is not missing; the empty string is passed to the inner transform as-is.
 
 Without a wrapper, a missing key passes `undefined` to the transform. All built-in transforms fail on `undefined` with a message suggesting `withDefault` or `withRequired`.
 
@@ -109,75 +123,9 @@ Or use `unwrap(result)` to extract the data or throw:
 const env = unwrap(loadEnv(opts, config));
 ```
 
-## Transforms
-
-Each config value is a transform function `(key, value, ctx) => Result<T>`, where `value` is `string | undefined` (`undefined` means the key was not found in any file).
-
-### Built-in transforms
-
-| Transform | Output | Description |
-|---|---|---|
-| `toString` | `string` | Returns value as-is |
-| `toInt` | `number` | Parses integer via `parseInt` (respects `radix` option) |
-| `toFloat` | `number` | Parses float |
-| `toBool` | `boolean` | `true/TRUE/True/1` → `true`, `false/FALSE/False/0` → `false`, anything else fails |
-| `toEnum(...values)` | union of `values` | Succeeds if value is one of the provided strings (case-sensitive) |
-| `toJSON<T>(schema?)` | `T` | Parses JSON, optionally validates with a schema parser |
-| `toStringArray(delimiter?)` | `string[]` | Splits by delimiter (default `,`), trims elements |
-| `toIntArray(delimiter?)` | `number[]` | Splits and parses each element as integer |
-| `toFloatArray(delimiter?)` | `number[]` | Splits and parses each element as float |
-
-Note: `parseInt` ignores trailing non-numeric characters (e.g. `'42abc'` parses as `42`). Use a custom transform if you need strict integer validation.
-
-### Custom transforms
-
-Return `success(value)` or `failure(message)`. TypeScript infers the result type from your `success(...)` calls.
-
-```ts
-import { loadEnv, unwrap, success, failure } from "@lindeneg/cl-env";
-
-const env = unwrap(
-    loadEnv(
-        { files: [".env"], transformKeys: false },
-        {
-            CREATED: (key, v) => {
-                if (v === undefined) return failure(`${key}: no value provided`);
-                const d = new Date(v);
-                if (isNaN(d.getTime())) return failure(`${key}: invalid date '${v}'`);
-                return success(d);
-            },
-        }
-    )
-);
-// env: { CREATED: Date }
-```
-
-Every transform receives a `TransformContext` as its third argument, which provides access to all resolved string values, the schema parser, radix function, logger, and the source file/line number of the key being transformed. `source` is the file name where the key was defined (e.g. `".env.local"`), `"process.env"` if the value came from a process.env merge, or `"none"` if the key was not found in any source. `line` is the line number in the source file, or `undefined` when there is no file. The `TransformFn` type is exported for writing reusable transforms in separate files.
-
-## Error handling
-
-Errors are accumulated. All config keys are validated, and every failure is reported, not just the first one.
-
-```ts
-type EnvError = {
-    key: string;
-    line?: number;
-    source?: string;
-    message: string;
-};
-```
-
-`unwrap(result)` throws an `Error` with all messages joined. The `success(data)` and `failure(ctx)` constructors are exported for writing custom transforms.
-
-### Strict file resolution
-
-Every file listed in `files` must be readable. If a file is missing or unreadable, that is always an error — even if all config keys are satisfied by other files. If you list `[".env", ".env.local"]` and `.env.local` doesn't exist, the result is a failure containing the file-read error alongside any transform errors. If no files produce any entries and there are file errors, `loadEnv` returns early with just the file errors (without running transforms).
-
-If you want a file to be optional, don't include it in the `files` array — use `includeProcessEnv: "fallback"` or handle the layering yourself.
-
 ## Options
 
-Options are passed inline as the first argument to `loadEnv`. Only `files` and `transformKeys` are required. The options type is not exported — pass options inline so TypeScript can infer the literal type of `transformKeys` and produce the correct key casing in the result.
+Options are passed inline as the first argument to `loadEnv`. Only `files` and `transformKeys` are required. The options type is not exported, pass options inline so TypeScript can infer the literal type of `transformKeys` and produce the correct key casing in the result.
 
 ### `files`
 
@@ -273,6 +221,74 @@ radix: (key) => key === "HEX_PORT" ? 16 : undefined
 ```
 
 Returns `undefined` to use the default (base 10).
+
+## Transforms
+
+Each config value is a transform function `(key, value, ctx) => Result<T>`, where `value` is `string | undefined` (`undefined` means the key was not found in any file).
+
+### Built-in transforms
+
+| Transform | Output | Description |
+|---|---|---|
+| `toString` | `string` | Returns value as-is |
+| `toInt` | `number` | Parses integer via `parseInt` (respects `radix` option) |
+| `toFloat` | `number` | Parses float |
+| `toBool` | `boolean` | `true/TRUE/True/1` → `true`, `false/FALSE/False/0` → `false`, anything else fails |
+| `toEnum(...values)` | union of `values` | Succeeds if value is one of the provided strings (case-sensitive) |
+| `toJSON<T>(schema?)` | `T` | Parses JSON, optionally validates with a schema parser |
+| `toStringArray(delimiter?)` | `string[]` | Splits by delimiter (default `,`), trims elements |
+| `toIntArray(delimiter?)` | `number[]` | Splits and parses each element as integer |
+| `toFloatArray(delimiter?)` | `number[]` | Splits and parses each element as float |
+
+Note: `parseInt` ignores trailing non-numeric characters (e.g. `'42abc'` parses as `42`). Use a custom transform if you need strict integer validation.
+
+### Custom transforms
+
+Return `success(value)` or `failure(message)`. TypeScript infers the result type from your `success(...)` calls.
+
+```ts
+import { loadEnv, unwrap, success, failure } from "@lindeneg/cl-env";
+
+const env = unwrap(
+    loadEnv(
+        { files: [".env"], transformKeys: false },
+        {
+            CREATED: (key, v) => {
+                if (v === undefined) return failure(`${key}: no value provided`);
+                const d = new Date(v);
+                if (isNaN(d.getTime())) return failure(`${key}: invalid date '${v}'`);
+                return success(d);
+            },
+        }
+    )
+);
+// env: { CREATED: Date }
+```
+
+Every transform receives a `TransformContext` as its third argument, which provides access to all resolved string values, the schema parser, radix function, logger, and the source file/line number of the key being transformed. `source` is the file name where the key was defined (e.g. `".env.local"`), `"process.env"` if the value came from a process.env merge, or `"none"` if the key was not found in any source. `line` is the line number in the source file, or `undefined` when there is no file. The `TransformFn` type is exported for writing reusable transforms in separate files.
+
+## Error handling
+
+Errors are accumulated. All config keys are validated, and every failure is reported, not just the first one.
+
+```ts
+type EnvError = {
+    key: string;
+    line?: number;
+    source?: string;
+    message: string;
+};
+```
+
+`unwrap(result)` throws an `Error` with all messages joined. The `success(data)` and `failure(ctx)` constructors are exported for writing custom transforms.
+
+### Strict file resolution
+
+Every file listed in `files` must be readable. If a file is missing or unreadable, that is always an error — even if all config keys are satisfied by other files. If you list `[".env", ".env.local"]` and `.env.local` doesn't exist, the result is a failure containing the file-read error alongside any transform errors. If no files produce any entries and there are file errors, `loadEnv` returns early with just the file errors (without running transforms).
+
+If you want a file to be optional, don't include it in the `files` array — use `includeProcessEnv: "fallback"` or handle the layering yourself.
+
+This is something I will probably make opt-out at some point, so users can configure this behavior.
 
 ## Variable expansion
 
