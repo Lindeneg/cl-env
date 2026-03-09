@@ -140,7 +140,7 @@ export function loadEnv<const TOpts extends LoadEnvOpts, TConfig extends Config>
 
     if (errors.length) return failure(errors);
 
-    if (log) log("debug", `successfully loaded ${seenKeys.size} vars`);
+    if (log) log("debug", `successfully loaded ${Object.keys(env).length} vars`);
 
     return success(env as any);
 }
