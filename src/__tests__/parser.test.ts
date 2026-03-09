@@ -52,7 +52,7 @@ describe("parser", () => {
             expect(result.ok).toBe(false);
             if (!result.ok) {
                 // should fail with "expected boolean" not "no value provided"
-                expect(result.ctx[0]).toContain("expected boolean");
+                expect(result.ctx[0]!.message).toContain("expected boolean");
             }
         });
 
@@ -108,7 +108,14 @@ describe("parser", () => {
 
         it("commented-out key is treated as missing", () => {
             const result = loadEnv(opts([".env.comments"]), {KEY: withRequired(toString)});
-            expect(result).toEqual({ok: false, ctx: ["KEY: is required but is missing"]});
+            expect(result.ok).toBe(false);
+            if (!result.ok) {
+                expect(result.ctx[0]).toMatchObject({
+                    key: "KEY",
+                    source: "none",
+                    message: "KEY: is required but is missing",
+                });
+            }
         });
     });
 
@@ -159,7 +166,14 @@ describe("parser", () => {
 
         it("does not strip 'export' without trailing space", () => {
             const result = loadEnv(opts([".env.export"]), {FOO: withRequired(toString)});
-            expect(result).toEqual({ok: false, ctx: ["FOO: is required but is missing"]});
+            expect(result.ok).toBe(false);
+            if (!result.ok) {
+                expect(result.ctx[0]).toMatchObject({
+                    key: "FOO",
+                    source: "none",
+                    message: "FOO: is required but is missing",
+                });
+            }
         });
     });
 

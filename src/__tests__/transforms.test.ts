@@ -12,6 +12,7 @@ import {
     toStringArray,
     toIntArray,
     toFloatArray,
+    toEnum,
     withDefault,
     withRequired,
     withOptional,
@@ -225,6 +226,41 @@ describe("transforms", () => {
         });
     });
 
+    describe("toEnum", () => {
+        it("succeeds for valid value", () => {
+            expect(toEnum("debug", "info", "warn", "error")("K", "debug", ctx)).toEqual({
+                ok: true,
+                data: "debug",
+            });
+        });
+
+        it("succeeds for each allowed value", () => {
+            const transform = toEnum("a", "b", "c");
+            expect(transform("K", "a", ctx)).toEqual({ok: true, data: "a"});
+            expect(transform("K", "b", ctx)).toEqual({ok: true, data: "b"});
+            expect(transform("K", "c", ctx)).toEqual({ok: true, data: "c"});
+        });
+
+        it("fails for invalid value", () => {
+            const result = toEnum("debug", "info")("LEVEL", "verbose", ctx);
+            expect(result).toEqual({
+                ok: false,
+                ctx: "LEVEL: expected one of [debug, info], got 'verbose'",
+            });
+        });
+
+        it("fails on undefined", () => {
+            const result = toEnum("a", "b")("K", undefined, ctx);
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.ctx).toContain("no value provided");
+        });
+
+        it("is case-sensitive", () => {
+            const result = toEnum("debug", "info")("K", "DEBUG", ctx);
+            expect(result.ok).toBe(false);
+        });
+    });
+
     describe("toJSON", () => {
         it("parses valid JSON", () => {
             expect(toJSON<{id: number}>()("K", '{"id":1}', ctx)).toEqual({
@@ -292,7 +328,14 @@ describe("wrappers", () => {
 
         it("fails when key is missing from file", () => {
             const result = loadEnv(opts([".env.missing"]), {ABSENT: withRequired(toString)});
-            expect(result).toEqual({ok: false, ctx: ["ABSENT: is required but is missing"]});
+            expect(result.ok).toBe(false);
+            if (!result.ok) {
+                expect(result.ctx[0]).toMatchObject({
+                    key: "ABSENT",
+                    source: "none",
+                    message: "ABSENT: is required but is missing",
+                });
+            }
         });
 
         it("passes empty string through to inner transform (KEY= is not missing)", () => {
@@ -367,13 +410,13 @@ describe("wrappers", () => {
         it("bare toString fails with 'no value provided' for missing key", () => {
             const result = loadEnv(opts([".env.missing"]), {FOO: toString});
             expect(result.ok).toBe(false);
-            if (!result.ok) expect(result.ctx[0]).toContain("no value provided");
+            if (!result.ok) expect(result.ctx[0]!.message).toContain("no value provided");
         });
 
         it("bare toInt fails with 'no value provided' for missing key", () => {
             const result = loadEnv(opts([".env.missing"]), {FOO: toInt});
             expect(result.ok).toBe(false);
-            if (!result.ok) expect(result.ctx[0]).toContain("no value provided");
+            if (!result.ok) expect(result.ctx[0]!.message).toContain("no value provided");
         });
     });
 });
@@ -384,7 +427,7 @@ describe("undefined vs empty string", () => {
     it("missing key → undefined to transform", () => {
         const result = loadEnv(opts([".env.missing"]), {ABSENT: toString});
         expect(result.ok).toBe(false);
-        if (!result.ok) expect(result.ctx[0]).toContain("no value provided");
+        if (!result.ok) expect(result.ctx[0]!.message).toContain("no value provided");
     });
 
     it("present empty KEY= → empty string to transform", () => {

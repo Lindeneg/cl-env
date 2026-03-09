@@ -12,6 +12,7 @@ import {
     toStringArray,
     toIntArray,
     toFloatArray,
+    toEnum,
     withDefault,
     withRequired,
     withOptional,
@@ -248,6 +249,35 @@ describe("type inference", () => {
 
         type assertion = Expect<Equal<typeof result, {NUMBERS: number[]}>>;
         expect(result.NUMBERS).toEqual([1, 2, 3, 4, 5]);
+    });
+
+    it("infers toEnum as union of provided values", () => {
+        const result = unwrap(loadEnv(opts([".env.custom"]), {LOG_LEVEL: toEnum("debug", "info", "warn", "error")}));
+
+        type assertion = Expect<Equal<typeof result, {LOG_LEVEL: "debug" | "info" | "warn" | "error"}>>;
+        expect(result.LOG_LEVEL).toBe("debug");
+    });
+
+    it("infers toEnum with withDefault", () => {
+        const result = unwrap(
+            loadEnv(opts([".env.missing"]), {
+                ABSENT: withDefault(toEnum("a", "b", "c"), "b"),
+            })
+        );
+
+        type assertion = Expect<Equal<typeof result, {ABSENT: "a" | "b" | "c"}>>;
+        expect(result.ABSENT).toBe("b");
+    });
+
+    it("infers toEnum with withOptional as T | undefined", () => {
+        const result = unwrap(
+            loadEnv(opts([".env.missing"]), {
+                ABSENT: withOptional(toEnum("x", "y")),
+            })
+        );
+
+        type assertion = Expect<Equal<typeof result, {ABSENT: "x" | "y" | undefined}>>;
+        expect(result.ABSENT).toBeUndefined();
     });
 
     it("full end-to-end with all transform types", () => {

@@ -173,7 +173,7 @@ describe("logging", () => {
                 transformKeys: false,
                 basePath: fixtures,
                 logger,
-                includeProcessEnv: true,
+                includeProcessEnv: "fallback",
             },
             {HOST: toString}
         );
@@ -193,14 +193,14 @@ describe("logging", () => {
                 transformKeys: false,
                 basePath: fixtures,
                 logger,
-                includeProcessEnv: "overwrite",
+                includeProcessEnv: "override",
             },
             {HOST: toString}
         );
         delete process.env.HOST;
 
         const overwriteLog = messages.find(
-            (m) => m.level === "verbose" && m.message.includes("process.env") && m.message.includes("overwrites")
+            (m) => m.level === "verbose" && m.message.includes("process.env") && m.message.includes("overrides")
         );
         expect(overwriteLog).toBeDefined();
     });

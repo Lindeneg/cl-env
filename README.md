@@ -24,7 +24,7 @@ npm i @lindeneg/cl-env
 ## Quick start
 
 ```ts
-import { loadEnv, toString, toInt, toBool, withOptional, withDefault, withRequired } from "@lindeneg/cl-env";
+import { loadEnv, toString, toInt, toFloat, toBool, withOptional, withDefault, withRequired } from "@lindeneg/cl-env";
 
 const env = loadEnv(
     {files: [".env"], transformKeys: true},
@@ -45,7 +45,7 @@ With `transformKeys: false`, keys are preserved as-is: `{ DATABASE_URL: string; 
 
 ## Result type
 
-`loadEnv` never throws. It returns `Result<T, string[]>`:
+`loadEnv` never throws. It returns `Result<T, EnvError[]>`:
 
 ```ts
 const result = loadEnv(
@@ -57,14 +57,25 @@ const result = loadEnv(
 );
 
 if (!result.ok) {
-    // result.ctx: string[] — all errors, with source and line numbers
-    // [".env:L3: PORT: is required but is missing", ".env:L4: API_KEY: is required but is missing"]
-    console.error(result.ctx.join("\n"));
+    // result.ctx: EnvError[] — structured errors with source, line, key, and message
+    // [{ key: "PORT", source: ".env", line: 3, message: "PORT: is required but is missing" }, ...]
+    for (const err of result.ctx) {
+        console.error(`${err.source}:L${err.line}: ${err.key}: ${err.message}`);
+    }
     process.exit(1);
 }
 
 // result.data is the fully typed env object
 result.data.PORT; // number
+```
+
+```ts
+type EnvError = {
+    key: string;
+    line?: number;
+    source?: string;
+    message: string;
+};
 ```
 
 `unwrap(result)` extracts the data or throws if the result is a failure — use this when you want your program to crash if environment loading fails. It also types correctly of course.
@@ -89,33 +100,25 @@ All transforms also return `Result`. The `success(data)` and `failure(ctx)` cons
 
 ## Options
 
-```ts
-type LoadEnvOpts = {
-    files: string[];                              // files to load, in order
-    transformKeys: boolean;                       // convert UPPER_SNAKE_CASE to camelCase
-    basePath?: string;                            // prepended to each file path
-    encoding?: BufferEncoding;                    // default: "utf8"
-    includeProcessEnv?: boolean | "overwrite";    // merge process.env (see below)
-    logger?: Logger | boolean;                    // logging (see below)
-    schemaParser?: SchemaParser;                  // for toJSON schema validation
-    radix?: (key: string) => number | undefined;  // per-key radix for toInt
-};
-```
-
-**Note:** If you extract the options into a separate variable typed as `LoadEnvOpts`, `transformKeys` widens to `boolean` and TypeScript can no longer determine the key casing at the type level. Pass options inline or use `as const` to preserve the literal type:
+Options are passed inline as the first argument to `loadEnv`:
 
 ```ts
-// works — literal type preserved
-const env = loadEnv({ files: [".env"], transformKeys: true }, config);
-
-// works — as const narrows the type
-const opts = { files: [".env"], transformKeys: true } as const;
-const env = loadEnv(opts, config);
-
-// broken — transformKeys widens to boolean, keys become a union of both casings
-const opts: LoadEnvOpts = { files: [".env"], transformKeys: true };
-const env = loadEnv(opts, config);
+loadEnv(
+    {
+        files: [".env"],                              // files to load, in order
+        transformKeys: true,                          // convert UPPER_SNAKE_CASE to camelCase
+        basePath: ".",                                // prepended to each file path
+        encoding: "utf8",                             // default: "utf8"
+        includeProcessEnv: "fallback",                // merge process.env (see below)
+        logger: true,                                 // logging (see below)
+        schemaParser: myParser,                       // for toJSON schema validation
+        radix: (key) => key === "HEX" ? 16 : undefined, // per-key radix for toInt
+    },
+    config
+);
 ```
+
+Only `files` and `transformKeys` are required. The options type is not exported — pass options inline so TypeScript can infer the literal type of `transformKeys` and produce the correct key casing in the result.
 
 ## Transform context
 
@@ -150,6 +153,7 @@ Each config value is a transform function: `(key, value, ctx) => Result<T>`. `va
 | `toStringArray(delimiter?)` | `string[]` | Splits by delimiter (default `,`), trims elements |
 | `toIntArray(delimiter?)` | `number[]` | Splits and parses each element as integer |
 | `toFloatArray(delimiter?)` | `number[]` | Splits and parses each element as float |
+| `toEnum(...values)` | union of `values` | Succeeds if value is one of the provided strings (case-sensitive), fails otherwise |
 
 ### Wrappers
 
@@ -164,21 +168,22 @@ Without a wrapper, a missing key passes `undefined` to the transform. All built-
 ### Custom transforms
 
 ```ts
-import { loadEnv, unwrap, success, failure, type TransformContext } from "@lindeneg/cl-env";
+import { loadEnv, unwrap, success, failure } from "@lindeneg/cl-env";
 
 const env = unwrap(
     loadEnv(
         { files: [".env"], transformKeys: false },
         {
-            LOG_LEVEL: (key, v) => {
+            CREATED: (key, v) => {
                 if (v === undefined) return failure(`${key}: no value provided`);
-                if (["debug", "info", "warn", "error"].includes(v)) return success(v as "debug" | "info" | "warn" | "error");
-                return failure(`${key}: invalid log level '${v}'`);
+                const d = new Date(v);
+                if (isNaN(d.getTime())) return failure(`${key}: invalid date '${v}'`);
+                return success(d);
             },
         }
     )
 );
-// env: { LOG_LEVEL: "debug" | "info" | "warn" | "error" }
+// env: { CREATED: Date }
 ```
 
 TypeScript infers the return type from your `success(...)` calls, so explicit type annotations on custom transforms are not needed but available if desired.
@@ -206,16 +211,16 @@ PORT=3000
 URL=http://${HOST}:$PORT
 ```
 
-Expansion runs after deduplication (last-wins), so all references see the final value of each key — not the value at the point of definition. This differs from classic dotenv's line-order expansion. Expansion resolves against previously defined keys, then falls back to `process.env`. Unresolved references are left unchanged (e.g. `$MISSING` stays as `$MISSING`). Single-quoted values are **not** expanded (they're literal).
+Expansion runs after deduplication (last-wins) and processes keys in order. A reference resolves against keys that have already been expanded, then falls back to `process.env`. Forward references (to keys not yet expanded) are left unresolved. Unresolved references are left unchanged (e.g. `$MISSING` stays as `$MISSING`). Single-quoted values are **not** expanded (they're literal).
 
 ## Process env merge
 
 ```ts
 // Fallback: process.env fills in keys missing from files
-loadEnv({ files: [".env"], transformKeys: false, includeProcessEnv: true }, config);
+loadEnv({ files: [".env"], transformKeys: false, includeProcessEnv: "fallback" }, config);
 
-// Overwrite: process.env wins over file values
-loadEnv({ files: [".env"], transformKeys: false, includeProcessEnv: "overwrite" }, config);
+// Override: process.env wins over file values
+loadEnv({ files: [".env"], transformKeys: false, includeProcessEnv: "override" }, config);
 ```
 
 Only keys defined in your config are read from `process.env` — it doesn't pull in arbitrary env vars.

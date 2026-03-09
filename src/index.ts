@@ -1,18 +1,18 @@
 import {join as nodeJoin} from "node:path";
 import {readFileSync} from "node:fs";
 
-export type LoadEnvOpts = {
+type LoadEnvOpts = {
     files: string[];
     transformKeys: boolean;
     basePath?: string;
     encoding?: BufferEncoding;
-    includeProcessEnv?: boolean | "overwrite";
+    includeProcessEnv?: "fallback" | "override" | false;
     logger?: Logger | boolean;
     schemaParser?: SchemaParser;
     radix?: RadixFn;
 };
 
-export function loadEnv<TOpts extends LoadEnvOpts, TConfig extends Config>(
+export function loadEnv<const TOpts extends LoadEnvOpts, TConfig extends Config>(
     opts: TOpts,
     config: TConfig
 ): Result<
@@ -23,10 +23,10 @@ export function loadEnv<TOpts extends LoadEnvOpts, TConfig extends Config>(
                 : K
             : K]: InferValueFromTransformFn<TConfig[K]>;
     },
-    string[]
+    EnvError[]
 > {
-    const errors: string[] = [];
-    const env: Record<PropertyKey, unknown> = {};
+    const errors: EnvError[] = [];
+    const env: Record<string, unknown> = {};
     const rawEnv: Record<string, string> = {};
     const seenKeys = new Set<string>();
 
@@ -45,6 +45,7 @@ export function loadEnv<TOpts extends LoadEnvOpts, TConfig extends Config>(
     };
 
     const allEntries = parseAllFiles(opts.files, errors, log, opts.basePath, opts.encoding);
+    if (allEntries.length === 0 && errors.length > 0) return failure(errors);
     const deduped = deduplicate(allEntries, log);
 
     if (log) checkUnknownKeys(deduped, config, log);
@@ -53,6 +54,11 @@ export function loadEnv<TOpts extends LoadEnvOpts, TConfig extends Config>(
 
     if (opts.includeProcessEnv) {
         mergeProcessEnv(expanded, opts.includeProcessEnv, config, log);
+    }
+
+    // populate rawEnv from expanded values before any transforms run
+    for (const [key, value] of expanded) {
+        rawEnv[key] = value;
     }
 
     function setVal(key: string, value: unknown) {
@@ -64,8 +70,6 @@ export function loadEnv<TOpts extends LoadEnvOpts, TConfig extends Config>(
         const transform = config[key];
         if (!transform) continue;
         seenKeys.add(key);
-        // populate rawEnv with the resolved string value before transforms run
-        if (value !== undefined) rawEnv[key] = value;
         const entry = deduped.get(key);
         // source should always resolve from expanded or entry; "unknown" is defensive
         const source = expanded.getSource(key) ?? entry?.source ?? "unknown";
@@ -77,16 +81,17 @@ export function loadEnv<TOpts extends LoadEnvOpts, TConfig extends Config>(
         try {
             const transformResult = transform(key, value, ctx);
             if (!transformResult.ok) {
-                const prefix = entry ? `${source}:L${entry.line}: ${key}` : key;
-                errors.push(`${prefix}: ${transformResult.ctx}`);
+                errors.push({key, ...(entry && {line: entry.line}), source, message: transformResult.ctx});
                 continue;
             }
             setVal(key, transformResult.data);
         } catch (err) {
-            const prefix = entry ? `${source}:L${entry.line}: ${key}` : key;
-            errors.push(
-                `${prefix}: transform function threw: ${err instanceof Error ? err.message : String(err)}`
-            );
+            errors.push({
+                key,
+                ...(entry && {line: entry.line}),
+                source,
+                message: `transform function threw: ${err instanceof Error ? err.message : String(err)}`,
+            });
             continue;
         }
     }
@@ -103,12 +108,14 @@ export function loadEnv<TOpts extends LoadEnvOpts, TConfig extends Config>(
                     log?.("debug", `${cfgKey}: not found in any file, using default`);
                     setVal(cfgKey, result.data);
                 } else {
-                    errors.push(result.ctx);
+                    errors.push({key: cfgKey, source: "none", message: result.ctx});
                 }
             } catch (err) {
-                errors.push(
-                    `${cfgKey}: transform function threw: ${err instanceof Error ? err.message : String(err)}`
-                );
+                errors.push({
+                    key: cfgKey,
+                    source: "none",
+                    message: `transform function threw: ${err instanceof Error ? err.message : String(err)}`,
+                });
             }
         }
     }
@@ -151,6 +158,13 @@ interface ResultFailure<TCtx> {
 
 export type Result<TData, TErrorCtx = string> = ResultSuccess<TData> | ResultFailure<TErrorCtx>;
 
+export type EnvError = {
+    key: string;
+    line?: number;
+    source?: string;
+    message: string;
+};
+
 export function success<TData>(data: TData): ResultSuccess<TData> {
     return {data, ok: true};
 }
@@ -162,17 +176,37 @@ export function failure<TCtx>(ctx: TCtx): ResultFailure<TCtx> {
 export function unwrap<T extends Result<any, any>>(
     r: T
 ): [T] extends [Result<infer TData, any>] ? TData : never {
-    if (!r.ok) throw new Error(Array.isArray(r.ctx) ? r.ctx.join("\n") : r.ctx);
+    if (!r.ok) {
+        if (Array.isArray(r.ctx)) {
+            const msg = r.ctx
+                .map((e: EnvError | string) =>
+                    typeof e === "string"
+                        ? e
+                        : `${e.source ? `${e.source}:` : ""}${e.line ? `L${e.line}: ` : ""}${e.key}: ${e.message}`
+                )
+                .join("\n");
+            throw new Error(msg);
+        }
+        throw new Error(typeof r.ctx === "string" ? r.ctx : String(r.ctx));
+    }
     return r.data;
 }
 
-export function toString(key: string, v: string | undefined, _ctx: TransformContext): Result<string> {
+export function toString(
+    key: string,
+    v: string | undefined,
+    _ctx: TransformContext
+): Result<string> {
     if (v === undefined)
         return failure(`${key}: no value provided (use withDefault or withRequired)`);
     return success(v);
 }
 
-export function toBool(key: string, v: string | undefined, _ctx: TransformContext): Result<boolean> {
+export function toBool(
+    key: string,
+    v: string | undefined,
+    _ctx: TransformContext
+): Result<boolean> {
     if (v === undefined)
         return failure(`${key}: no value provided (use withDefault or withRequired)`);
     const lower = v.toLowerCase();
@@ -235,6 +269,15 @@ export function toFloatArray(delimiter = ",") {
     };
 }
 
+export function toEnum<T extends string>(...values: T[]) {
+    return function (key: string, v: string | undefined, _ctx: TransformContext): Result<T> {
+        if (v === undefined)
+            return failure(`${key}: no value provided (use withDefault or withRequired)`);
+        if (values.includes(v as T)) return success(v as T);
+        return failure(`${key}: expected one of [${values.join(", ")}], got '${v}'`);
+    };
+}
+
 export function toJSON<T>(schema?: unknown) {
     return function (k: string, v: string | undefined, ctx: TransformContext): Result<T> {
         if (v === undefined)
@@ -252,7 +295,9 @@ export function toJSON<T>(schema?: unknown) {
             }
             return success(json);
         } catch (err) {
-            return failure(`${k}: failed to parse JSON: ${err instanceof Error ? err.message : String(err)}`);
+            return failure(
+                `${k}: failed to parse JSON: ${err instanceof Error ? err.message : String(err)}`
+            );
         }
     };
 }
@@ -312,7 +357,7 @@ export type TransformContext = {
     source?: string;
 };
 
-type TransformFn<TData = any> = (
+export type TransformFn<TData = any> = (
     key: string,
     val: string | undefined,
     ctx: TransformContext
@@ -322,7 +367,14 @@ type InferValueFromTransformFn<TTransform extends TransformFn> =
     ReturnType<TTransform> extends Result<infer TData> ? TData : never;
 
 function defaultLogger(level: LogLevel, message: string) {
-    const method = level === "error" ? "error" : level === "warn" ? "warn" : level === "verbose" ? "log" : "debug";
+    const method =
+        level === "error"
+            ? "error"
+            : level === "warn"
+              ? "warn"
+              : level === "verbose"
+                ? "log"
+                : "debug";
     console[method](`[cl-env:${level}] ${message}`);
 }
 
@@ -331,7 +383,9 @@ function readFile(path: string, encoding: BufferEncoding): Result<string> {
         const file = readFileSync(path, {encoding});
         return success(file);
     } catch (err: any) {
-        return failure(`failed to read '${path}': ${err?.code ?? (err instanceof Error ? err.message : String(err))}`);
+        return failure(
+            `failed to read '${path}': ${err?.code ?? (err instanceof Error ? err.message : String(err))}`
+        );
     }
 }
 
@@ -353,7 +407,7 @@ function toNumber(key: string, v: string, ctx: TransformContext, parser: "int" |
 
 function parseAllFiles(
     files: string[],
-    errors: string[],
+    errors: EnvError[],
     log?: Logger,
     basePath?: string,
     encoding?: BufferEncoding
@@ -376,7 +430,7 @@ function parseAllFiles(
             }
         } else {
             log?.("verbose", `failed to read file: ${fullPath}`);
-            errors.push(fileResult.ctx);
+            errors.push({key: file, source: file, message: fileResult.ctx});
         }
     }
     return allEntries;
@@ -420,19 +474,18 @@ function checkUnknownKeys(deduped: Map<string, ParsedEntry>, config: Config, log
 
 function mergeProcessEnv(
     expanded: SourceMap,
-    includeProcessEnv: boolean | "overwrite",
+    mode: "fallback" | "override",
     config: Config,
     log?: Logger
 ) {
-    const mode = includeProcessEnv === "overwrite" ? "overwrite" : "fallback";
     log?.("debug", `merging process.env as ${mode}`);
     for (const key of Object.keys(config)) {
         const pVal = process.env[key];
         if (pVal === undefined) continue;
 
-        if (includeProcessEnv === "overwrite") {
+        if (mode === "override") {
             const prev = expanded.getSource(key);
-            log?.("verbose", `process.env: ${key}: overwrites${prev ? ` ${prev}` : ""} value`);
+            log?.("verbose", `process.env: ${key}: overrides${prev ? ` ${prev}` : ""} value`);
             expanded.set(key, pVal, "process.env");
         } else if (!expanded.has(key)) {
             log?.("verbose", `process.env: ${key}: using as fallback`);
@@ -599,7 +652,8 @@ function parseDotenv(raw: string): {entries: ParsedEntry[]; warnings: ParseWarni
                     terminated = true;
                     break;
                 } else {
-                    parts.push(advance()!);
+                    const ch = advance();
+                    if (ch !== undefined) parts.push(ch);
                 }
             }
             value = parts.join("");
@@ -725,3 +779,23 @@ function expand(
         }
     );
 }
+
+//class Foo {}
+//
+//const config = {files: [".env"], transformKeys: true} as const;
+//const k = unwrap(
+//    loadEnv(
+//        config,
+//        {
+//            DATABASE_URL: withRequired(toString),
+//            PORT: withDefault(toInt, 3000),
+//            RANGE_VALUES: toIntArray(),
+//            GOOGLE_ID: toString,
+//            GOOGLE_MID: toString,
+//            PROCESS_TEST: toJSON<Foo>(),
+//            CUSTOM_STUFF_THING: withRequired((k, v) => {
+//                return success(new Foo());
+//            }),
+//        }
+//    )
+//);

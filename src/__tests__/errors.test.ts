@@ -29,8 +29,12 @@ describe("error handling", () => {
         const result = loadEnv(opts([".env.basic"]), {HOST: toInt});
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.ctx[0]).toMatch(/\.env\.basic:L1: HOST/);
-            expect(result.ctx[0]).toContain("failed to convert 'localhost' to a number");
+            expect(result.ctx[0]).toMatchObject({
+                key: "HOST",
+                source: ".env.basic",
+                line: 1,
+            });
+            expect(result.ctx[0]!.message).toContain("failed to convert 'localhost' to a number");
         }
     });
 
@@ -42,11 +46,15 @@ describe("error handling", () => {
         });
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.ctx[0]).toMatch(/\.env\.basic:L1: HOST/);
-            expect(result.ctx[0]).toContain("transform function threw");
-            expect(result.ctx[0]).toContain("boom");
+            expect(result.ctx[0]).toMatchObject({
+                key: "HOST",
+                source: ".env.basic",
+                line: 1,
+            });
+            expect(result.ctx[0]!.message).toContain("transform function threw");
+            expect(result.ctx[0]!.message).toContain("boom");
             // should use err.message, not toString of Error object
-            expect(result.ctx[0]).not.toContain("[object");
+            expect(result.ctx[0]!.message).not.toContain("[object");
         }
     });
 
@@ -58,7 +66,7 @@ describe("error handling", () => {
         });
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.ctx[0]).toContain("raw string error");
+            expect(result.ctx[0]!.message).toContain("raw string error");
         }
     });
 
@@ -72,8 +80,8 @@ describe("error handling", () => {
         if (!result.ok) {
             // HOST fails to parse as int, MISSING is required but absent
             expect(result.ctx.length).toBe(2);
-            expect(result.ctx[0]).toContain("HOST");
-            expect(result.ctx[1]).toContain("MISSING");
+            expect(result.ctx[0]!.key).toBe("HOST");
+            expect(result.ctx[1]!.key).toBe("MISSING");
         }
     });
 
@@ -91,7 +99,11 @@ describe("error handling", () => {
         );
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.ctx[0]).toMatch(/\.env\.layered\.local:L1: PORT/);
+            expect(result.ctx[0]).toMatchObject({
+                key: "PORT",
+                source: ".env.layered.local",
+                line: 1,
+            });
         }
     });
 });

@@ -177,14 +177,14 @@ describe("features", () => {
             delete process.env[ENV_KEY];
         });
 
-        it("includeProcessEnv: true uses process.env as fallback for missing keys", () => {
+        it("includeProcessEnv: 'fallback' uses process.env as fallback for missing keys", () => {
             process.env[ENV_KEY] = "from-process";
             const result = loadEnv(
                 {
                     files: [".env.missing"],
                     transformKeys: false,
                     basePath: fixtures,
-                    includeProcessEnv: true,
+                    includeProcessEnv: "fallback",
                 },
                 {PRESENT: toString, [ENV_KEY]: toString}
             );
@@ -194,14 +194,14 @@ describe("features", () => {
             });
         });
 
-        it("includeProcessEnv: true does not overwrite file values", () => {
+        it("includeProcessEnv: 'fallback' does not overwrite file values", () => {
             process.env.PRESENT = "from-process";
             const result = loadEnv(
                 {
                     files: [".env.missing"],
                     transformKeys: false,
                     basePath: fixtures,
-                    includeProcessEnv: true,
+                    includeProcessEnv: "fallback",
                 },
                 {PRESENT: toString}
             );
@@ -209,14 +209,14 @@ describe("features", () => {
             delete process.env.PRESENT;
         });
 
-        it("includeProcessEnv: 'overwrite' lets process.env win", () => {
+        it("includeProcessEnv: 'override' lets process.env win", () => {
             process.env.PRESENT = "overwritten";
             const result = loadEnv(
                 {
                     files: [".env.missing"],
                     transformKeys: false,
                     basePath: fixtures,
-                    includeProcessEnv: "overwrite",
+                    includeProcessEnv: "override",
                 },
                 {PRESENT: toString}
             );
@@ -279,7 +279,7 @@ describe("features", () => {
             const result = loadEnv(opts([".env.complex"]), {JSON_CONFIG: toJSON({})});
             expect(result.ok).toBe(false);
             if (!result.ok) {
-                expect(result.ctx[0]).toContain("schema provided but no schemaParser is set");
+                expect(result.ctx[0]!.message).toContain("schema provided but no schemaParser is set");
             }
         });
 
@@ -362,7 +362,7 @@ describe("features", () => {
                     files: [".env.missing"],
                     transformKeys: false,
                     basePath: fixtures,
-                    includeProcessEnv: true,
+                    includeProcessEnv: "fallback",
                 },
                 {PRESENT: toString, [envKey]: spy}
             );
