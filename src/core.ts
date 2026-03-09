@@ -14,6 +14,7 @@ import type {
 
 export type LoadEnvOpts = {
     files: string[];
+    optionalFiles?: string[];
     transformKeys: boolean;
     basePath?: string;
     encoding?: BufferEncoding;
@@ -81,6 +82,22 @@ export function resolveEnv<const TOpts extends LoadEnvOpts, TConfig extends Conf
     fileContents: Map<string, string>,
     fileErrors: EnvError[]
 ): ResolveEnvResult<TOpts, TConfig> {
+    const hasFiles = opts.files.length > 0;
+    const hasOptional = (opts.optionalFiles?.length ?? 0) > 0;
+    const hasProcessEnv =
+        opts.includeProcessEnv === "fallback" || opts.includeProcessEnv === "override";
+
+    if (!hasFiles && !hasOptional && !hasProcessEnv) {
+        return failure([
+            {
+                key: "files",
+                source: "none",
+                message:
+                    "no sources configured: files is empty, no optionalFiles, and includeProcessEnv is disabled",
+            },
+        ]);
+    }
+
     const errors: EnvError[] = [...fileErrors];
     const env: Record<string, unknown> = {};
     const rawEnv: Record<string, string> = {};
