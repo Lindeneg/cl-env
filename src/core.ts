@@ -110,7 +110,7 @@ export function resolveEnv<const TOpts extends LoadEnvOpts, TConfig extends Conf
     };
 
     const allEntries = parseFileContents(fileContents, errors, log);
-    if (allEntries.length === 0 && errors.length > 0) return failure(errors) as any;
+    if (allEntries.length === 0 && errors.length > 0) return failure(errors);
     const deduped = deduplicate(allEntries, log);
 
     if (log) checkUnknownKeys(deduped, config, log);
@@ -190,11 +190,11 @@ export function resolveEnv<const TOpts extends LoadEnvOpts, TConfig extends Conf
         }
     }
 
-    if (errors.length) return failure(errors) as any;
+    if (errors.length) return failure(errors);
 
     if (log) log("debug", `successfully loaded ${Object.keys(env).length} vars`);
 
-    return success(env as any) as any;
+    return success(env as any);
 }
 
 function toCamelCase(s: string): string {
