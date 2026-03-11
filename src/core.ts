@@ -6,7 +6,6 @@ import type {
     SchemaParser,
     TransformContext,
     Config,
-    RadixFn,
     InferValueFromTransformFn,
     SafeCamelCase,
     ParsedEntry,
@@ -21,7 +20,6 @@ export type LoadEnvOpts = {
     includeProcessEnv?: "fallback" | "override" | false;
     logger?: Logger | boolean;
     schemaParser?: SchemaParser;
-    radix?: RadixFn;
 };
 
 export type ResolveEnvResult<TOpts extends LoadEnvOpts, TConfig extends Config> = Result<
@@ -253,7 +251,7 @@ function expandEntries(deduped: Map<string, ParsedEntry>, log?: Logger) {
         }
     }
 
-    // Kahn's algorithm — topological sort
+    // kahn's algorithm
     const queue: string[] = [];
     for (const [key, degree] of inDegree) {
         if (degree === 0) queue.push(key);
@@ -280,7 +278,7 @@ function expandEntries(deduped: Map<string, ParsedEntry>, log?: Logger) {
         }
     }
 
-    // handle cyclic entries — warn and expand best-effort
+    // handle cyclic entries, warn and expand best-effort
     if (order.length < deduped.size) {
         const orderSet = new Set(order);
         for (const [key, entry] of deduped) {

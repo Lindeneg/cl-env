@@ -1,12 +1,13 @@
 export {loadEnv} from "./loadEnv.js";
 export {loadEnvAsync} from "./loadEnvAsync.js";
 export {success, failure, unwrap, type Result, type EnvError} from "./result.js";
-export {
-    type LogLevel,
-    type Logger,
-    type SchemaParser,
-    type TransformContext,
-    type TransformFn,
+export type {
+    LogLevel,
+    Logger,
+    SchemaParser,
+    TransformContext,
+    TransformFn,
+    InferValueFromTransformFn,
 } from "./types.js";
 export {
     toString,
