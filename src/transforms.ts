@@ -69,11 +69,15 @@ export type ToNumberArrayOpts = {
 } & ToNumberOpts;
 
 export function toIntArray(opts: ToNumberArrayOpts) {
-    return toNumberArray.bind(null, "int", opts);
+    return function (k: string, v: string | undefined, ctx: TransformContext): Result<number[]> {
+        return toNumberArray("int", opts, k, v, ctx);
+    };
 }
 
 export function toFloatArray(opts: ToNumberArrayOpts) {
-    return toNumberArray.bind(null, "float", opts);
+    return function (k: string, v: string | undefined, ctx: TransformContext): Result<number[]> {
+        return toNumberArray("float", opts, k, v, ctx);
+    };
 }
 
 export function toEnum<T extends string>(...values: T[]) {
@@ -175,7 +179,7 @@ function toNumberArray(
     if (v === undefined) {
         return failure(`${key}: no value provided (use withDefault or withRequired)`);
     }
-    const parts = v.split(opts.delimiter || ",").map((s) => s.trim());
+    const parts = v.split(opts.delimiter === undefined ? "," : opts.delimiter).map((s) => s.trim());
     const out: number[] = [];
 
     const boundToNumber = toNumber.bind(null, parser, opts);

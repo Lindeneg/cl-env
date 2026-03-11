@@ -33,9 +33,10 @@ export function parseDotenv(
         if (pos < raw.length) advance();
     }
 
-    function handleQuote(quote: "'" | "`", entryLine: number, key: string, value: string): string {
+    function handleQuote(quote: "'" | "`", entryLine: number, key: string): string {
         const start = pos + 1;
         let terminated = false;
+        let value = "";
         advance();
         while (pos < raw.length) {
             if (raw[pos] === quote) {
@@ -161,10 +162,8 @@ export function parseDotenv(
                     message: `L${entryLine}: ${key}: unterminated double quote, consumed ${consumed} line(s) to EOF`,
                 });
             }
-        } else if (quote === "'") {
-            value = handleQuote("'", entryLine, key, value);
-        } else if (quote === "`") {
-            value = handleQuote("`", entryLine, key, value);
+        } else if (quote === "'" || quote === "`") {
+            value = handleQuote(quote, entryLine, key);
         } else {
             // unquoted: single line, inline comments, trim trailing whitespace, use slice
             // pos++ (not advance()) is safe here: loop breaks on \n so line counter stays correct

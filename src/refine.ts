@@ -1,7 +1,5 @@
-import {success, failure, type Result} from "./result.js";
-import type {TransformContext, TransformFn} from "./types.js";
-
-export type RefineCheck<T> = (key: string, val: T, ctx: TransformContext) => Result<T>;
+import {success, failure} from "./result.js";
+import type {RefineCheck, TransformFn} from "./types.js";
 
 export function refine<T>(
     transform: TransformFn<T>,

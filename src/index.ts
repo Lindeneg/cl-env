@@ -7,8 +7,10 @@ export type {
     SchemaParser,
     TransformContext,
     TransformFn,
+    RefineCheck,
     InferValueFromTransformFn,
 } from "./types.js";
+export {refine, inRange, nonEmpty, matches, minLength, maxLength} from "./refine.js";
 export {
     toString,
     toBool,
