@@ -50,7 +50,12 @@ export async function loadEnvAsync<const TOpts extends LoadEnvOpts, TConfig exte
                 "verbose",
                 `failed to read file: ${opts.basePath ? nodeJoin(opts.basePath, result.file) : result.file}`
             );
-            fileErrors.push({key: result.file, source: result.file, message: result.error});
+            fileErrors.push({
+                key: result.file,
+                line: 0,
+                source: result.file,
+                message: result.error,
+            });
         } else {
             log?.("debug", `optional file not found, skipping: ${result.file}`);
         }

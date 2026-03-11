@@ -39,7 +39,7 @@ export function loadEnv<const TOpts extends LoadEnvOpts, TConfig extends Config>
                 "verbose",
                 `failed to read file: ${opts.basePath ? nodeJoin(opts.basePath, file) : file}`
             );
-            fileErrors.push({key: file, source: file, message: result.error});
+            fileErrors.push({key: file, line: 0, source: file, message: result.error});
         }
     }
 
