@@ -103,7 +103,6 @@ export function resolveEnv<const TOpts extends LoadEnvOpts, TConfig extends Conf
     const baseCtx: TransformContext = {
         expandedEnv,
         ...(opts.schemaParser && {schemaParser: opts.schemaParser}),
-        ...(opts.radix && {radix: opts.radix}),
         ...(log && {log}),
     };
 
