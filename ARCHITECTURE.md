@@ -1,7 +1,5 @@
 # Architecture
 
-Technical notes on the design decisions behind cl-env.
-
 ---
 
 ## Pipeline
@@ -9,7 +7,7 @@ Technical notes on the design decisions behind cl-env.
 Every `loadEnv` / `loadEnvAsync` call runs the same pipeline:
 
 ```
-read files → parse → deduplicate → expand → merge process.env → transform → output
+read files → parse → deduplicate → expand → (optional) merge process.env → transform → output
 ```
 
 The pipeline is split across three layers:

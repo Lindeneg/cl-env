@@ -19,6 +19,7 @@ Load `.env` files, validate values with composable transforms, and produce a **f
 - [API](#api)
   - [Options](#options)
   - [Transforms](#transforms)
+  - [Refine](#refine)
   - [Custom transforms](#custom-transforms)
   - [TransformContext](#transformcontext)
 - [Behavior](#behavior)
@@ -65,10 +66,10 @@ const env = unwrap(
     loadEnv(
         { files: [".env"], transformKeys: true },
         {
-            DATABASE_URL: withRequired(toString),
-            PORT: withDefault(toInt, 3000),
-            FLOAT: withOptional(toFloat),
-            DEBUG: toBool,
+            DATABASE_URL: withRequired(toString()),
+            PORT: withDefault(toInt(), 3000),
+            FLOAT: withOptional(toFloat()),
+            DEBUG: toBool(),
             LOG_LEVEL: toEnum("debug", "info", "warn", "error"),
         }
     )
@@ -127,7 +128,6 @@ Options are passed inline as the first argument to `loadEnv` / `loadEnvAsync`. T
 | `includeProcessEnv` | `"fallback"` \| `"override"` \| `false` | no | `false` | `"fallback"`: fills in keys missing from files. `"override"`: `process.env` wins over file values. `false`: ignore `process.env`. Only keys defined in your config are read. See [details below](#includeprocessenv-details). |
 | `logger` | `Logger` \| `boolean` | no | — | `true` for built-in colored logger, or a `(level, message) => void` function. Levels: `"error"`, `"warn"`, `"debug"`, `"verbose"`. |
 | `schemaParser` | `SchemaParser` | no | — | Validation function for `toJSON` transforms. See [schema validation](#schema-validation). |
-| `radix` | `(key: string) => number \| undefined` | no | — | Per-key radix for `toInt`. Return `undefined` for default (base 10). |
 
 #### `includeProcessEnv` details
 
@@ -158,21 +158,57 @@ If a schema is passed to `toJSON` but no `schemaParser` is set in options, it fa
 
 ### Transforms
 
-Each config value is a transform function `(key, value, ctx) => Result<T>`, where `value` is `string | undefined` (`undefined` means the key was not found in any source).
+All built-in transforms are factory functions. Call them (e.g. `toString()`, `toInt()`) in your config. The factory call accepts optional configuration.
 
 | Transform | Output | Notes |
 |---|---|---|
-| `toString` | `string` | Returns value as-is |
-| `toInt` | `number` | `parseInt`, respects `radix` option. Note: `parseInt` ignores trailing non-numeric characters (e.g. `'42abc'` → `42`). Use a custom transform for strict validation. |
-| `toFloat` | `number` | `parseFloat` |
-| `toBool` | `boolean` | `true/TRUE/1` → `true`, `false/FALSE/0` → `false` (case-insensitive). Anything else fails. |
+| `toString()` | `string` | Returns value as-is. |
+| `toInt(opts?)` | `number` | `parseInt`. Options: `{ radix?: number, strict?: boolean }`. Strict mode (default) rejects non-numeric characters (e.g. `'42abc'` fails). |
+| `toFloat(opts?)` | `number` | `parseFloat`. Options: `{ strict?: boolean }`. Strict mode (default) rejects non-numeric characters. |
+| `toBool(opts?)` | `boolean` | `true/TRUE/1` → `true`, `false/FALSE/0` → `false` (case-insensitive). Options: `{ trueValues?: string[], falseValues?: string[] }` for custom mappings. |
 | `toEnum(...values)` | union | Succeeds if value matches exactly (case-sensitive). Type is inferred as union of provided strings. |
 | `toJSON<T>(schema?)` | `T` | `JSON.parse`, optionally validated via `schemaParser`. |
 | `toStringArray(delim?)` | `string[]` | Split by delimiter (default `,`), trim each element. |
-| `toIntArray(delim?)` | `number[]` | Split and parse each as integer. |
-| `toFloatArray(delim?)` | `number[]` | Split and parse each as float. |
+| `toIntArray(opts?)` | `number[]` | Split and parse each as integer. Options: `{ delimiter?, radix?, strict? }`. |
+| `toFloatArray(opts?)` | `number[]` | Split and parse each as float. Options: `{ delimiter?, strict? }`. |
 
 All built-in transforms fail on `undefined` with a message suggesting `withDefault` or `withRequired`.
+
+### Refine
+
+Chain validation checks after a transform using `refine`:
+
+```ts
+import { refine, inRange, nonEmpty, matches, minLength, maxLength } from "@lindeneg/cl-env";
+
+const config = {
+    PORT: withRequired(refine(toInt(), inRange(1, 65535))),
+    HOST: withRequired(refine(toString(), nonEmpty())),
+    API_KEY: withOptional(refine(toString(), minLength(10), maxLength(128))),
+    TAGS: refine(toStringArray(), maxLength(10)),
+    EMAIL: refine(toString(), matches(/^.+@.+\..+$/)),
+};
+```
+
+| Helper | Applies to | Description |
+|---|---|---|
+| `refine(transform, ...checks)` | any | Chain one or more checks after a transform. |
+| `inRange(min, max)` | `number` | Value must be `>= min` and `<= max`. |
+| `nonEmpty()` | `string \| any[]` | Shorthand for `minLength(1)`. |
+| `minLength(n)` | `string \| any[]` | `.length` must be `>= n`. |
+| `maxLength(n)` | `string \| any[]` | `.length` must be `<= n`. |
+| `matches(regex)` | `string` | Value must match the regex. |
+
+Checks are `RefineCheck<T>` functions: `(key, value, ctx) => Result<T>`. Write custom checks for project-specific validation:
+
+```ts
+import { type RefineCheck, success, failure } from "@lindeneg/cl-env";
+
+const isEven: RefineCheck<number> = (key, val) =>
+    val % 2 === 0 ? success(val) : failure(`${key}: expected even number, got ${val}`);
+
+const config = { COUNT: refine(toInt(), isEven) };
+```
 
 ### Custom transforms
 
@@ -209,7 +245,6 @@ Every transform receives a `TransformContext` as its third argument:
 | `source` | `string \| undefined` | Where the key came from: file name (e.g. `".env.local"`), `"process.env"`, or `"none"`. |
 | `line` | `number \| undefined` | Line number in the source file. `undefined` when there is no file. |
 | `schemaParser` | `SchemaParser \| undefined` | The schema parser from options, if set. |
-| `radix` | `((key: string) => number \| undefined) \| undefined` | The radix function from options, if set. |
 | `log` | `Logger \| undefined` | The logger from options, if set. |
 
 ---
@@ -226,9 +261,11 @@ You control how missing variables behave with wrappers:
 | `withDefault(transform, value)` | Uses default value | Delegates to transform |
 | `withOptional(transform)` | Returns `undefined` | Delegates to transform |
 
-A key is "missing" when it doesn't appear in any file (or `process.env`, if merged), its value is `undefined`. A key with an empty value (`KEY=`) is **not** missing; the empty string is passed to the inner transform as-is.
+A key is "missing" when it doesn't appear in any file (or `process.env`, if merged) — its value is `undefined`. A key with an empty value (`KEY=`) is **not** missing; the empty string is passed to the inner transform as-is.
 
 Without a wrapper, a missing key passes `undefined` directly to the transform. All built-in transforms fail on `undefined` with a message suggesting `withDefault` or `withRequired`.
+
+Wrappers compose with `refine`: `withRequired(refine(toInt(), inRange(1, 65535)))` validates the port is required **and** within range.
 
 ### Result type
 
