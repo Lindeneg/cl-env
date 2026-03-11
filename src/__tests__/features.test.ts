@@ -25,7 +25,7 @@ describe("features", () => {
         it("converts UPPER_SNAKE_CASE to camelCase", () => {
             const result = loadEnv(
                 {files: [".env.basic"], transformKeys: true, basePath: fixtures},
-                {HOST: toString, PORT: toInt, APP_NAME: toString}
+                {HOST: toString(), PORT: toInt(), APP_NAME: toString()}
             );
             expect(result).toEqual({
                 ok: true,
@@ -36,7 +36,7 @@ describe("features", () => {
         it("leaves mixed-case keys untouched", () => {
             const result = loadEnv(
                 {files: [".env.transformkeys"], transformKeys: true, basePath: fixtures},
-                {FOO_BAR: toString, helloThere: toString, blah: toString}
+                {FOO_BAR: toString(), helloThere: toString(), blah: toString()}
             );
             expect(result).toEqual({
                 ok: true,
@@ -45,14 +45,14 @@ describe("features", () => {
         });
 
         it("does not transform keys when transformKeys is false", () => {
-            const result = loadEnv(opts([".env.basic"]), {APP_NAME: toString});
+            const result = loadEnv(opts([".env.basic"]), {APP_NAME: toString()});
             expect(result).toEqual({ok: true, data: {APP_NAME: "my-app"}});
         });
 
         it("works with export prefix", () => {
             const result = loadEnv(
                 {files: [".env.export"], transformKeys: true, basePath: fixtures},
-                {API_KEY: withRequired(toString), PORT: toInt}
+                {API_KEY: withRequired(toString()), PORT: toInt()}
             );
             expect(result).toEqual({ok: true, data: {apiKey: "secret123", port: 3000}});
         });
@@ -66,7 +66,7 @@ describe("features", () => {
                     transformKeys: false,
                     basePath: fixtures,
                 },
-                {HOST: toString, PORT: toInt, DEBUG: toBool, SECRET: toString}
+                {HOST: toString(), PORT: toInt(), DEBUG: toBool(), SECRET: toString()}
             );
             expect(result).toEqual({
                 ok: true,
@@ -81,7 +81,7 @@ describe("features", () => {
                     transformKeys: false,
                     basePath: fixtures,
                 },
-                {HOST: toString}
+                {HOST: toString()}
             );
             expect(result).toEqual({ok: true, data: {HOST: "localhost"}});
         });
@@ -96,7 +96,7 @@ describe("features", () => {
                     transformKeys: false,
                     basePath: fixtures,
                 },
-                {HOST: toString, PORT: toInt, SECRET: toString}
+                {HOST: toString(), PORT: toInt(), SECRET: toString()}
             );
             expect(result).toEqual({
                 ok: true,
@@ -112,7 +112,7 @@ describe("features", () => {
                     transformKeys: false,
                     basePath: fixtures,
                 },
-                {HOST: toString}
+                {HOST: toString()}
             );
             expect(result).toEqual({ok: true, data: {HOST: "localhost"}});
         });
@@ -126,7 +126,7 @@ describe("features", () => {
                     transformKeys: false,
                     basePath: fixtures,
                 },
-                {PORT: toInt}
+                {PORT: toInt()}
             );
             expect(result).toEqual({ok: true, data: {PORT: 8080}});
         });
@@ -139,7 +139,7 @@ describe("features", () => {
                     transformKeys: false,
                     basePath: fixtures,
                 },
-                {HOST: toString}
+                {HOST: toString()}
             );
             expect(result.ok).toBe(false);
             if (!result.ok) {
@@ -151,8 +151,8 @@ describe("features", () => {
     describe("duplicate keys", () => {
         it("last value wins", () => {
             const result = loadEnv(opts([".env.duplicate"]), {
-                KEY: toString,
-                OTHER: toString,
+                KEY: toString(),
+                OTHER: toString(),
             });
             expect(result).toEqual({ok: true, data: {KEY: "second", OTHER: "only"}});
         });
@@ -161,9 +161,9 @@ describe("features", () => {
     describe("variable expansion", () => {
         it("expands ${VAR} references", () => {
             const result = loadEnv(opts([".env.expansion"]), {
-                HOST: toString,
-                PORT: toString,
-                URL: toString,
+                HOST: toString(),
+                PORT: toString(),
+                URL: toString(),
             });
             expect(result).toEqual({
                 ok: true,
@@ -173,9 +173,9 @@ describe("features", () => {
 
         it("expands $VAR references (bare)", () => {
             const result = loadEnv(opts([".env.expansion"]), {
-                HOST: toString,
-                PORT: toString,
-                URL: toString,
+                HOST: toString(),
+                PORT: toString(),
+                URL: toString(),
             });
             if (result.ok) {
                 // URL uses both ${HOST} and $PORT
@@ -185,9 +185,9 @@ describe("features", () => {
 
         it("does NOT expand variables in single-quoted values", () => {
             const result = loadEnv(opts([".env.expansion"]), {
-                HOST: toString,
-                PORT: toString,
-                SINGLE_QUOTED: toString,
+                HOST: toString(),
+                PORT: toString(),
+                SINGLE_QUOTED: toString(),
             });
             if (result.ok) {
                 expect(result.data.SINGLE_QUOTED).toBe("$HOST:${PORT}");
@@ -197,16 +197,16 @@ describe("features", () => {
         it("leaves unresolved references unchanged (not empty string)", () => {
             // ensure CLENV_UNDEFINED_VAR is not in process.env
             delete process.env.CLENV_UNDEFINED_VAR;
-            const result = loadEnv(opts([".env.expansion"]), {MISSING_REF: toString});
+            const result = loadEnv(opts([".env.expansion"]), {MISSING_REF: toString()});
             expect(result).toEqual({ok: true, data: {MISSING_REF: "$CLENV_UNDEFINED_VAR"}});
         });
 
         it("supports chained expansion", () => {
             const result = loadEnv(opts([".env.expansion"]), {
-                HOST: toString,
-                PORT: toString,
-                URL: toString,
-                CHAINED: toString,
+                HOST: toString(),
+                PORT: toString(),
+                URL: toString(),
+                CHAINED: toString(),
             });
             if (result.ok) {
                 expect(result.data.CHAINED).toBe("http://localhost:3000/api");
@@ -219,7 +219,7 @@ describe("features", () => {
             // B=$A: A resolved to "$B" → B becomes "$B"
             delete process.env.A;
             delete process.env.B;
-            const result = loadEnv(opts([".env.cyclic"]), {A: toString, B: toString});
+            const result = loadEnv(opts([".env.cyclic"]), {A: toString(), B: toString()});
             expect(result.ok).toBe(true);
             if (result.ok) {
                 expect(result.data.A).toBe("$B");
@@ -229,11 +229,11 @@ describe("features", () => {
 
         it("resolves forward references (topo sort)", () => {
             const result = loadEnv(opts([".env.forward-ref"]), {
-                URL: toString,
-                HOST: toString,
-                PORT: toString,
-                ANOTHER_HOST: toString,
-                CHAINED: toString,
+                URL: toString(),
+                HOST: toString(),
+                PORT: toString(),
+                ANOTHER_HOST: toString(),
+                CHAINED: toString(),
             });
             expect(result).toEqual({
                 ok: true,
@@ -249,8 +249,8 @@ describe("features", () => {
 
         it("resolves forward references across dependency chains", () => {
             const result = loadEnv(opts([".env.forward-ref"]), {
-                URL: toString,
-                ANOTHER_HOST: toString,
+                URL: toString(),
+                ANOTHER_HOST: toString(),
             });
             if (result.ok) {
                 // URL → HOST → ANOTHER_HOST, all resolved despite reverse file order
@@ -275,7 +275,7 @@ describe("features", () => {
                     basePath: fixtures,
                     includeProcessEnv: "fallback",
                 },
-                {PRESENT: toString, [ENV_KEY]: toString}
+                {PRESENT: toString(), [ENV_KEY]: toString()}
             );
             expect(result).toEqual({
                 ok: true,
@@ -292,7 +292,7 @@ describe("features", () => {
                     basePath: fixtures,
                     includeProcessEnv: "fallback",
                 },
-                {PRESENT: toString}
+                {PRESENT: toString()}
             );
             expect(result).toEqual({ok: true, data: {PRESENT: "here"}});
             delete process.env.PRESENT;
@@ -307,7 +307,7 @@ describe("features", () => {
                     basePath: fixtures,
                     includeProcessEnv: "override",
                 },
-                {PRESENT: toString}
+                {PRESENT: toString()}
             );
             expect(result).toEqual({ok: true, data: {PRESENT: "overwritten"}});
             delete process.env.PRESENT;
@@ -322,7 +322,7 @@ describe("features", () => {
                     basePath: fixtures,
                     includeProcessEnv: "fallback",
                 },
-                {EMPTY_KEY: toString}
+                {EMPTY_KEY: toString()}
             );
             // KEY= in file means the key IS present (empty string), fallback should not replace it
             expect(result).toEqual({ok: true, data: {EMPTY_KEY: ""}});
@@ -339,7 +339,7 @@ describe("features", () => {
                     basePath: fixtures,
                     includeProcessEnv: "fallback",
                 },
-                {[key]: toString}
+                {[key]: toString()}
             );
             // $REF should stay literal — process.env values are taken as-is
             expect(result).toEqual({ok: true, data: {[key]: "has-$REF-in-it"}});
@@ -349,8 +349,8 @@ describe("features", () => {
         it("no merge when includeProcessEnv is false/undefined", () => {
             process.env[ENV_KEY] = "should-not-appear";
             const result = loadEnv(opts([".env.missing"]), {
-                PRESENT: toString,
-                [ENV_KEY]: withDefault(toString, "default"),
+                PRESENT: toString(),
+                [ENV_KEY]: withDefault(toString(), "default"),
             });
             expect(result).toEqual({
                 ok: true,
@@ -426,17 +426,12 @@ describe("features", () => {
         });
     });
 
-    describe("radix", () => {
-        it("uses radix function for parseInt", () => {
-            const result = loadEnv(
-                {
-                    files: [".env.radix"],
-                    transformKeys: false,
-                    basePath: fixtures,
-                    radix: (key) => (key === "HEX_PORT" ? 16 : undefined),
-                },
-                {HEX_PORT: toInt, DEC_PORT: toInt}
-            );
+    describe("per-transform options", () => {
+        it("toInt respects per-transform radix", () => {
+            const result = loadEnv(opts([".env.radix"]), {
+                HEX_PORT: toInt({radix: 16}),
+                DEC_PORT: toInt(),
+            });
             expect(result).toEqual({ok: true, data: {HEX_PORT: 26, DEC_PORT: 3000}});
         });
     });
@@ -445,7 +440,7 @@ describe("features", () => {
         it("joins basePath with file names", () => {
             const result = loadEnv(
                 {files: [".env.basic"], transformKeys: false, basePath: fixtures},
-                {HOST: toString}
+                {HOST: toString()}
             );
             expect(result).toEqual({ok: true, data: {HOST: "localhost"}});
         });
@@ -454,7 +449,7 @@ describe("features", () => {
             const fixture = (...names: string[]) => join(fixtures, ...names);
             const result = loadEnv(
                 {files: [fixture(".env.basic")], transformKeys: false},
-                {HOST: toString}
+                {HOST: toString()}
             );
             expect(result).toEqual({ok: true, data: {HOST: "localhost"}});
         });
@@ -465,7 +460,7 @@ describe("features", () => {
             let capturedSource: string | undefined;
             const spy = (key: string, val: string | undefined, ctx: TransformContext) => {
                 capturedSource = ctx.source;
-                return toString(key, val, ctx);
+                return toString()(key, val, ctx);
             };
 
             loadEnv(opts([".env.basic"]), {HOST: spy});
@@ -478,7 +473,7 @@ describe("features", () => {
             let capturedSource: string | undefined;
             const spy = (key: string, val: string | undefined, ctx: TransformContext) => {
                 capturedSource = ctx.source;
-                return toString(key, val, ctx);
+                return toString()(key, val, ctx);
             };
 
             loadEnv(
@@ -488,7 +483,7 @@ describe("features", () => {
                     basePath: fixtures,
                     includeProcessEnv: "fallback",
                 },
-                {PRESENT: toString, [envKey]: spy}
+                {PRESENT: toString(), [envKey]: spy}
             );
             expect(capturedSource).toBe("process.env");
             delete process.env[envKey];
@@ -509,7 +504,7 @@ describe("features", () => {
             let capturedLine: number | undefined;
             const spy = (key: string, val: string | undefined, ctx: TransformContext) => {
                 capturedLine = ctx.line;
-                return toString(key, val, ctx);
+                return toString()(key, val, ctx);
             };
 
             // PORT is on line 2 of .env.basic
@@ -521,7 +516,7 @@ describe("features", () => {
             let capturedSource: string | undefined;
             const spy = (key: string, val: string | undefined, ctx: TransformContext) => {
                 capturedSource = ctx.source;
-                return toString(key, val, ctx);
+                return toString()(key, val, ctx);
             };
 
             // PORT is in both files, .env.layered.local wins

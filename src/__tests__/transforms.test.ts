@@ -14,6 +14,12 @@ import {
     withDefault,
     withRequired,
     withOptional,
+    refine,
+    inRange,
+    nonEmpty,
+    matches,
+    minLength,
+    maxLength,
     success,
     failure,
     type SchemaParser,
@@ -32,15 +38,15 @@ const ctx: TransformContext = {expandedEnv: {}};
 describe("transforms", () => {
     describe("toString", () => {
         it("returns value as-is", () => {
-            expect(toString("K", "hello", ctx)).toEqual({ok: true, data: "hello"});
+            expect(toString()("K", "hello", ctx)).toEqual({ok: true, data: "hello"});
         });
 
         it("returns empty string for empty value", () => {
-            expect(toString("K", "", ctx)).toEqual({ok: true, data: ""});
+            expect(toString()("K", "", ctx)).toEqual({ok: true, data: ""});
         });
 
         it("fails on undefined", () => {
-            const result = toString("K", undefined, ctx);
+            const result = toString()("K", undefined, ctx);
             expect(result.ok).toBe(false);
             if (!result.ok) expect(result.ctx).toContain("no value provided");
         });
@@ -57,23 +63,30 @@ describe("transforms", () => {
             ["False", false],
             ["0", false],
         ] as const)("parses '%s' as %s", (input, expected) => {
-            expect(toBool("K", input, ctx)).toEqual({ok: true, data: expected});
+            expect(toBool()("K", input, ctx)).toEqual({ok: true, data: expected});
         });
 
         it.each(["yes", "no", "on", "off", "2", ""])("rejects '%s'", (input) => {
-            const result = toBool("K", input, ctx);
+            const result = toBool()("K", input, ctx);
             expect(result.ok).toBe(false);
         });
 
         it("includes key and value in error message", () => {
-            expect(toBool("DEBUG", "nope", ctx)).toEqual({
+            expect(toBool()("DEBUG", "nope", ctx)).toEqual({
                 ok: false,
                 ctx: "DEBUG: expected boolean, got 'nope'",
             });
         });
 
+        it("supports custom true/false values", () => {
+            const yesNo = toBool({trueValues: ["yes", "y"], falseValues: ["no", "n"]});
+            expect(yesNo("K", "yes", ctx)).toEqual({ok: true, data: true});
+            expect(yesNo("K", "n", ctx)).toEqual({ok: true, data: false});
+            expect(yesNo("K", "true", ctx).ok).toBe(false);
+        });
+
         it("fails on undefined", () => {
-            const result = toBool("K", undefined, ctx);
+            const result = toBool()("K", undefined, ctx);
             expect(result.ok).toBe(false);
             if (!result.ok) expect(result.ctx).toContain("no value provided");
         });
@@ -81,43 +94,55 @@ describe("transforms", () => {
 
     describe("toInt", () => {
         it("parses valid integer", () => {
-            expect(toInt("K", "42", ctx)).toEqual({ok: true, data: 42});
+            expect(toInt()("K", "42", ctx)).toEqual({ok: true, data: 42});
         });
 
         it("parses negative integer", () => {
-            expect(toInt("K", "-7", ctx)).toEqual({ok: true, data: -7});
+            expect(toInt()("K", "-7", ctx)).toEqual({ok: true, data: -7});
         });
 
-        it("fails on non-numeric", () => {
-            expect(toInt("PORT", "abc", ctx)).toEqual({
+        it("fails on non-numeric (strict mode default)", () => {
+            expect(toInt()("PORT", "abc", ctx)).toEqual({
                 ok: false,
-                ctx: "PORT: failed to convert 'abc' to a number",
+                ctx: "PORT: 'abc' is not a valid integer",
             });
         });
 
-        it("fails on empty string", () => {
-            expect(toInt("K", "", ctx)).toEqual({
+        it("fails on empty string (strict mode default)", () => {
+            expect(toInt()("K", "", ctx)).toEqual({
                 ok: false,
-                ctx: "K: failed to convert '' to a number",
+                ctx: "K: '' is not a valid integer",
             });
         });
 
-        it("respects radix from context", () => {
-            const hexCtx: TransformContext = {expandedEnv: {}, radix: () => 16};
-            expect(toInt("K", "ff", hexCtx)).toEqual({ok: true, data: 255});
+        it("rejects trailing non-numeric characters in strict mode", () => {
+            const result = toInt()("K", "42abc", ctx);
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.ctx).toContain("is not a valid integer");
         });
 
-        it("radix can be per-key", () => {
-            const mixedCtx: TransformContext = {
-                expandedEnv: {},
-                radix: (key: string) => (key === "HEX" ? 16 : undefined),
-            };
-            expect(toInt("HEX", "a", mixedCtx)).toEqual({ok: true, data: 10});
-            expect(toInt("DEC", "10", mixedCtx)).toEqual({ok: true, data: 10});
+        it("allows trailing non-numeric in non-strict mode (parseInt behavior)", () => {
+            expect(toInt({strict: false})("K", "42abc", ctx)).toEqual({ok: true, data: 42});
+        });
+
+        it("non-strict mode fails on completely non-numeric", () => {
+            expect(toInt({strict: false})("K", "abc", ctx)).toEqual({
+                ok: false,
+                ctx: "K: failed to convert 'abc' to a number",
+            });
+        });
+
+        it("respects radix option", () => {
+            expect(toInt({radix: 16})("K", "ff", ctx)).toEqual({ok: true, data: 255});
+        });
+
+        it("respects radix with strict mode", () => {
+            expect(toInt({radix: 16})("K", "1a", ctx)).toEqual({ok: true, data: 26});
+            expect(toInt({radix: 16})("K", "gg", ctx).ok).toBe(false);
         });
 
         it("fails on undefined", () => {
-            const result = toInt("K", undefined, ctx);
+            const result = toInt()("K", undefined, ctx);
             expect(result.ok).toBe(false);
             if (!result.ok) expect(result.ctx).toContain("no value provided");
         });
@@ -125,26 +150,47 @@ describe("transforms", () => {
 
     describe("toFloat", () => {
         it("parses valid float", () => {
-            expect(toFloat("K", "3.14", ctx)).toEqual({ok: true, data: 3.14});
+            expect(toFloat()("K", "3.14", ctx)).toEqual({ok: true, data: 3.14});
         });
 
         it("parses negative float", () => {
-            expect(toFloat("K", "-0.5", ctx)).toEqual({ok: true, data: -0.5});
+            expect(toFloat()("K", "-0.5", ctx)).toEqual({ok: true, data: -0.5});
         });
 
         it("parses integer as float", () => {
-            expect(toFloat("K", "42", ctx)).toEqual({ok: true, data: 42});
+            expect(toFloat()("K", "42", ctx)).toEqual({ok: true, data: 42});
         });
 
-        it("fails on non-numeric", () => {
-            expect(toFloat("RATE", "abc", ctx)).toEqual({
+        it("parses scientific notation", () => {
+            expect(toFloat()("K", "1.5e3", ctx)).toEqual({ok: true, data: 1500});
+        });
+
+        it("fails on non-numeric (strict mode default)", () => {
+            expect(toFloat()("RATE", "abc", ctx)).toEqual({
                 ok: false,
-                ctx: "RATE: failed to convert 'abc' to a number",
+                ctx: "RATE: 'abc' is not a valid number",
+            });
+        });
+
+        it("rejects trailing non-numeric in strict mode", () => {
+            const result = toFloat()("K", "3.14xyz", ctx);
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.ctx).toContain("is not a valid number");
+        });
+
+        it("allows trailing non-numeric in non-strict mode", () => {
+            expect(toFloat({strict: false})("K", "3.14xyz", ctx)).toEqual({ok: true, data: 3.14});
+        });
+
+        it("non-strict mode fails on completely non-numeric", () => {
+            expect(toFloat({strict: false})("K", "abc", ctx)).toEqual({
+                ok: false,
+                ctx: "K: failed to convert 'abc' to a number",
             });
         });
 
         it("fails on undefined", () => {
-            const result = toFloat("K", undefined, ctx);
+            const result = toFloat()("K", undefined, ctx);
             expect(result.ok).toBe(false);
             if (!result.ok) expect(result.ctx).toContain("no value provided");
         });
@@ -190,12 +236,23 @@ describe("transforms", () => {
         });
 
         it("supports custom delimiter", () => {
-            expect(toIntArray("-")("K", "3-1-4", ctx)).toEqual({ok: true, data: [3, 1, 4]});
+            expect(toIntArray({delimiter: "-"})("K", "3-1-4", ctx)).toEqual({
+                ok: true,
+                data: [3, 1, 4],
+            });
         });
 
         it("fails if any element is not a number", () => {
             const result = toIntArray()("NUMS", "1,abc,3", ctx);
             expect(result.ok).toBe(false);
+        });
+
+        it("propagates strict mode to elements", () => {
+            const strict = toIntArray()("K", "1,42abc,3", ctx);
+            expect(strict.ok).toBe(false);
+
+            const lenient = toIntArray({strict: false})("K", "1,42abc,3", ctx);
+            expect(lenient).toEqual({ok: true, data: [1, 42, 3]});
         });
 
         it("fails on undefined", () => {
@@ -221,7 +278,7 @@ describe("transforms", () => {
         });
 
         it("supports custom delimiter", () => {
-            expect(toFloatArray("|")("K", "3.14|2.71", ctx)).toEqual({
+            expect(toFloatArray({delimiter: "|"})("K", "3.14|2.71", ctx)).toEqual({
                 ok: true,
                 data: [3.14, 2.71],
             });
@@ -230,6 +287,14 @@ describe("transforms", () => {
         it("fails if any element is not a number", () => {
             const result = toFloatArray()("NUMS", "1.1,abc,3.3", ctx);
             expect(result.ok).toBe(false);
+        });
+
+        it("propagates strict mode to elements", () => {
+            const strict = toFloatArray()("K", "1.0,3.14xyz", ctx);
+            expect(strict.ok).toBe(false);
+
+            const lenient = toFloatArray({strict: false})("K", "1.0,3.14xyz", ctx);
+            expect(lenient).toEqual({ok: true, data: [1.0, 3.14]});
         });
 
         it("fails on undefined", () => {
@@ -335,12 +400,12 @@ describe("transforms", () => {
 describe("wrappers", () => {
     describe("withRequired", () => {
         it("succeeds when key exists in file", () => {
-            const result = loadEnv(opts([".env.missing"]), {PRESENT: withRequired(toString)});
+            const result = loadEnv(opts([".env.missing"]), {PRESENT: withRequired(toString())});
             expect(result).toEqual({ok: true, data: {PRESENT: "here"}});
         });
 
         it("fails when key is missing from file", () => {
-            const result = loadEnv(opts([".env.missing"]), {ABSENT: withRequired(toString)});
+            const result = loadEnv(opts([".env.missing"]), {ABSENT: withRequired(toString())});
             expect(result.ok).toBe(false);
             if (!result.ok) {
                 expect(result.ctx[0]).toMatchObject({
@@ -353,39 +418,39 @@ describe("wrappers", () => {
 
         it("passes empty string through to inner transform (KEY= is not missing)", () => {
             const result = loadEnv(opts([".env.empty-value"]), {
-                EMPTY_KEY: withRequired(toString),
+                EMPTY_KEY: withRequired(toString()),
             });
             expect(result).toEqual({ok: true, data: {EMPTY_KEY: ""}});
         });
 
         it("passes through to inner transform when value is present", () => {
-            const result = loadEnv(opts([".env.basic"]), {PORT: withRequired(toInt)});
+            const result = loadEnv(opts([".env.basic"]), {PORT: withRequired(toInt())});
             expect(result).toEqual({ok: true, data: {PORT: 3000}});
         });
     });
 
     describe("withDefault", () => {
         it("returns default when key is missing from file", () => {
-            const result = loadEnv(opts([".env.missing"]), {ABSENT: withDefault(toInt, 9999)});
+            const result = loadEnv(opts([".env.missing"]), {ABSENT: withDefault(toInt(), 9999)});
             expect(result).toEqual({ok: true, data: {ABSENT: 9999}});
         });
 
         it("passes empty string through — does NOT use default for KEY=", () => {
             const result = loadEnv(opts([".env.empty-value"]), {
-                EMPTY_KEY: withDefault(toString, "fallback"),
+                EMPTY_KEY: withDefault(toString(), "fallback"),
             });
             expect(result).toEqual({ok: true, data: {EMPTY_KEY: ""}});
         });
 
         it("uses file value when key exists", () => {
-            const result = loadEnv(opts([".env.basic"]), {PORT: withDefault(toInt, 9999)});
+            const result = loadEnv(opts([".env.basic"]), {PORT: withDefault(toInt(), 9999)});
             expect(result).toEqual({ok: true, data: {PORT: 3000}});
         });
 
         it("applies transformKeys to default values for missing keys", () => {
             const result = loadEnv(
                 {files: [".env.missing"], transformKeys: true, basePath: fixtures},
-                {MY_PORT: withDefault(toInt, 3000)}
+                {MY_PORT: withDefault(toInt(), 3000)}
             );
             expect(result).toEqual({ok: true, data: {myPort: 3000}});
         });
@@ -394,40 +459,40 @@ describe("wrappers", () => {
     describe("withOptional", () => {
         it("returns undefined when key is missing from file", () => {
             const result = loadEnv(opts([".env.missing"]), {
-                ABSENT: withOptional(toString),
+                ABSENT: withOptional(toString()),
             });
             expect(result).toEqual({ok: true, data: {ABSENT: undefined}});
         });
 
         it("delegates to inner transform when value is present", () => {
-            const result = loadEnv(opts([".env.basic"]), {PORT: withOptional(toInt)});
+            const result = loadEnv(opts([".env.basic"]), {PORT: withOptional(toInt())});
             expect(result).toEqual({ok: true, data: {PORT: 3000}});
         });
 
         it("passes empty string through — does NOT return undefined for KEY=", () => {
             const result = loadEnv(opts([".env.empty-value"]), {
-                EMPTY_KEY: withOptional(toString),
+                EMPTY_KEY: withOptional(toString()),
             });
             expect(result).toEqual({ok: true, data: {EMPTY_KEY: ""}});
         });
 
         it("inner transform error propagates", () => {
             const result = loadEnv(opts([".env.basic"]), {
-                HOST: withOptional(toInt),
+                HOST: withOptional(toInt()),
             });
             expect(result.ok).toBe(false);
         });
     });
 
     describe("bare transform for missing key", () => {
-        it("bare toString fails with 'no value provided' for missing key", () => {
-            const result = loadEnv(opts([".env.missing"]), {FOO: toString});
+        it("bare toString() fails with 'no value provided' for missing key", () => {
+            const result = loadEnv(opts([".env.missing"]), {FOO: toString()});
             expect(result.ok).toBe(false);
             if (!result.ok) expect(result.ctx[0]!.message).toContain("no value provided");
         });
 
-        it("bare toInt fails with 'no value provided' for missing key", () => {
-            const result = loadEnv(opts([".env.missing"]), {FOO: toInt});
+        it("bare toInt() fails with 'no value provided' for missing key", () => {
+            const result = loadEnv(opts([".env.missing"]), {FOO: toInt()});
             expect(result.ok).toBe(false);
             if (!result.ok) expect(result.ctx[0]!.message).toContain("no value provided");
         });
@@ -438,45 +503,244 @@ describe("wrappers", () => {
 
 describe("undefined vs empty string", () => {
     it("missing key → undefined to transform", () => {
-        const result = loadEnv(opts([".env.missing"]), {ABSENT: toString});
+        const result = loadEnv(opts([".env.missing"]), {ABSENT: toString()});
         expect(result.ok).toBe(false);
         if (!result.ok) expect(result.ctx[0]!.message).toContain("no value provided");
     });
 
     it("present empty KEY= → empty string to transform", () => {
-        const result = loadEnv(opts([".env.empty-value"]), {EMPTY_KEY: toString});
+        const result = loadEnv(opts([".env.empty-value"]), {EMPTY_KEY: toString()});
         expect(result).toEqual({ok: true, data: {EMPTY_KEY: ""}});
     });
 
     it("withRequired fails on missing, succeeds on empty", () => {
-        const missing = loadEnv(opts([".env.missing"]), {ABSENT: withRequired(toString)});
+        const missing = loadEnv(opts([".env.missing"]), {ABSENT: withRequired(toString())});
         expect(missing.ok).toBe(false);
 
-        const empty = loadEnv(opts([".env.empty-value"]), {EMPTY_KEY: withRequired(toString)});
+        const empty = loadEnv(opts([".env.empty-value"]), {EMPTY_KEY: withRequired(toString())});
         expect(empty).toEqual({ok: true, data: {EMPTY_KEY: ""}});
     });
 
     it("withDefault substitutes on missing, passes through empty", () => {
         const missing = loadEnv(opts([".env.missing"]), {
-            ABSENT: withDefault(toString, "fallback"),
+            ABSENT: withDefault(toString(), "fallback"),
         });
         expect(missing).toEqual({ok: true, data: {ABSENT: "fallback"}});
 
         const empty = loadEnv(opts([".env.empty-value"]), {
-            EMPTY_KEY: withDefault(toString, "fallback"),
+            EMPTY_KEY: withDefault(toString(), "fallback"),
         });
         expect(empty).toEqual({ok: true, data: {EMPTY_KEY: ""}});
     });
 
     it("withOptional returns undefined on missing, passes through empty", () => {
         const missing = loadEnv(opts([".env.missing"]), {
-            ABSENT: withOptional(toString),
+            ABSENT: withOptional(toString()),
         });
         expect(missing).toEqual({ok: true, data: {ABSENT: undefined}});
 
         const empty = loadEnv(opts([".env.empty-value"]), {
-            EMPTY_KEY: withOptional(toString),
+            EMPTY_KEY: withOptional(toString()),
         });
         expect(empty).toEqual({ok: true, data: {EMPTY_KEY: ""}});
+    });
+});
+
+// ─── refine ──────────────────────────────────────────────────────────────────
+
+describe("refine", () => {
+    describe("refine function", () => {
+        it("passes value through when all checks pass", () => {
+            const transform = refine(toInt(), inRange(0, 100));
+            expect(transform("K", "50", ctx)).toEqual({ok: true, data: 50});
+        });
+
+        it("fails when a check fails", () => {
+            const transform = refine(toInt(), inRange(0, 100));
+            const result = transform("K", "200", ctx);
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.ctx).toContain("bigger than constraint");
+        });
+
+        it("fails when base transform fails", () => {
+            const transform = refine(toInt(), inRange(0, 100));
+            const result = transform("K", "abc", ctx);
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.ctx).toContain("is not a valid integer");
+        });
+
+        it("chains multiple checks", () => {
+            const transform = refine(toString(), nonEmpty(), maxLength(5));
+            expect(transform("K", "hi", ctx)).toEqual({ok: true, data: "hi"});
+
+            const tooLong = transform("K", "toolongstring", ctx);
+            expect(tooLong.ok).toBe(false);
+
+            const empty = transform("K", "", ctx);
+            expect(empty.ok).toBe(false);
+        });
+
+        it("fails on undefined (base transform handles it)", () => {
+            const transform = refine(toString(), nonEmpty());
+            const result = transform("K", undefined, ctx);
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.ctx).toContain("no value provided");
+        });
+    });
+
+    describe("inRange", () => {
+        it("passes when value is within range", () => {
+            const transform = refine(toInt(), inRange(1, 10));
+            expect(transform("K", "5", ctx)).toEqual({ok: true, data: 5});
+        });
+
+        it("passes at boundaries", () => {
+            const transform = refine(toInt(), inRange(1, 10));
+            expect(transform("K", "1", ctx)).toEqual({ok: true, data: 1});
+            expect(transform("K", "10", ctx)).toEqual({ok: true, data: 10});
+        });
+
+        it("fails below minimum", () => {
+            const transform = refine(toInt(), inRange(1, 10));
+            const result = transform("K", "0", ctx);
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.ctx).toContain("smaller than constraint '1'");
+        });
+
+        it("fails above maximum", () => {
+            const transform = refine(toInt(), inRange(1, 10));
+            const result = transform("K", "11", ctx);
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.ctx).toContain("bigger than constraint '10'");
+        });
+
+        it("works with floats", () => {
+            const transform = refine(toFloat(), inRange(0, 1));
+            expect(transform("K", "0.5", ctx)).toEqual({ok: true, data: 0.5});
+            expect(transform("K", "1.1", ctx).ok).toBe(false);
+        });
+    });
+
+    describe("nonEmpty", () => {
+        it("passes for non-empty string", () => {
+            const transform = refine(toString(), nonEmpty());
+            expect(transform("K", "hello", ctx)).toEqual({ok: true, data: "hello"});
+        });
+
+        it("fails for empty string", () => {
+            const transform = refine(toString(), nonEmpty());
+            const result = transform("K", "", ctx);
+            expect(result.ok).toBe(false);
+        });
+
+        it("works with arrays", () => {
+            const transform = refine(toStringArray(), nonEmpty());
+            expect(transform("K", "a,b", ctx)).toEqual({ok: true, data: ["a", "b"]});
+        });
+    });
+
+    describe("matches", () => {
+        it("passes when regex matches", () => {
+            const transform = refine(toString(), matches(/^\d{3}-\d{4}$/));
+            expect(transform("K", "123-4567", ctx)).toEqual({ok: true, data: "123-4567"});
+        });
+
+        it("fails when regex does not match", () => {
+            const transform = refine(toString(), matches(/^\d{3}-\d{4}$/));
+            const result = transform("K", "not-a-phone", ctx);
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.ctx).toContain("failed to match");
+        });
+    });
+
+    describe("minLength", () => {
+        it("passes when length meets minimum", () => {
+            const transform = refine(toString(), minLength(3));
+            expect(transform("K", "abc", ctx)).toEqual({ok: true, data: "abc"});
+        });
+
+        it("fails when too short", () => {
+            const transform = refine(toString(), minLength(3));
+            const result = transform("K", "ab", ctx);
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.ctx).toContain("minimum '3' length");
+        });
+
+        it("works with arrays", () => {
+            const transform = refine(toStringArray(), minLength(2));
+            expect(transform("K", "a,b,c", ctx)).toEqual({ok: true, data: ["a", "b", "c"]});
+            expect(transform("K", "a", ctx).ok).toBe(false);
+        });
+    });
+
+    describe("maxLength", () => {
+        it("passes when length is within maximum", () => {
+            const transform = refine(toString(), maxLength(5));
+            expect(transform("K", "abc", ctx)).toEqual({ok: true, data: "abc"});
+        });
+
+        it("fails when too long", () => {
+            const transform = refine(toString(), maxLength(3));
+            const result = transform("K", "abcd", ctx);
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.ctx).toContain("maximum '3' length");
+        });
+
+        it("works with arrays", () => {
+            const transform = refine(toStringArray(), maxLength(2));
+            expect(transform("K", "a,b", ctx)).toEqual({ok: true, data: ["a", "b"]});
+            expect(transform("K", "a,b,c", ctx).ok).toBe(false);
+        });
+    });
+
+    describe("refine with wrappers", () => {
+        it("withRequired + refine", () => {
+            const result = loadEnv(opts([".env.basic"]), {
+                PORT: withRequired(refine(toInt(), inRange(1, 65535))),
+            });
+            expect(result).toEqual({ok: true, data: {PORT: 3000}});
+        });
+
+        it("withRequired + refine fails on constraint", () => {
+            const result = loadEnv(opts([".env.basic"]), {
+                PORT: withRequired(refine(toInt(), inRange(1, 100))),
+            });
+            expect(result.ok).toBe(false);
+        });
+
+        it("withDefault + refine", () => {
+            const result = loadEnv(opts([".env.missing"]), {
+                ABSENT: withDefault(refine(toInt(), inRange(0, 100)), 50),
+            });
+            expect(result).toEqual({ok: true, data: {ABSENT: 50}});
+        });
+
+        it("withOptional + refine returns undefined for missing", () => {
+            const result = loadEnv(opts([".env.missing"]), {
+                ABSENT: withOptional(refine(toString(), nonEmpty())),
+            });
+            expect(result).toEqual({ok: true, data: {ABSENT: undefined}});
+        });
+
+        it("withOptional + refine validates when present", () => {
+            const result = loadEnv(opts([".env.basic"]), {
+                HOST: withOptional(refine(toString(), nonEmpty())),
+            });
+            expect(result).toEqual({ok: true, data: {HOST: "localhost"}});
+        });
+
+        it("withOptional + refine fails on constraint when present", () => {
+            const result = loadEnv(opts([".env.empty-value"]), {
+                EMPTY_KEY: withOptional(refine(toString(), nonEmpty())),
+            });
+            expect(result.ok).toBe(false);
+        });
+
+        it("refine with toStringArray + maxLength", () => {
+            const result = loadEnv(opts([".env.complex"]), {
+                TAGS: withRequired(refine(toStringArray(), maxLength(5))),
+            });
+            expect(result).toEqual({ok: true, data: {TAGS: ["foo", "bar", "baz"]}});
+        });
     });
 });

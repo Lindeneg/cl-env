@@ -26,10 +26,10 @@ describe("loadEnvAsync", () => {
     describe("basic loading", () => {
         it("loads a single file", async () => {
             const result = await loadEnvAsync(opts([".env.basic"]), {
-                HOST: toString,
-                PORT: toInt,
-                DEBUG: toBool,
-                APP_NAME: toString,
+                HOST: toString(),
+                PORT: toInt(),
+                DEBUG: toBool(),
+                APP_NAME: toString(),
             });
             expect(result).toEqual({
                 ok: true,
@@ -44,7 +44,7 @@ describe("loadEnvAsync", () => {
                     transformKeys: false,
                     basePath: fixtures,
                 },
-                {HOST: toString, PORT: toInt, DEBUG: toBool, SECRET: toString}
+                {HOST: toString(), PORT: toInt(), DEBUG: toBool(), SECRET: toString()}
             );
             expect(result).toEqual({
                 ok: true,
@@ -55,7 +55,7 @@ describe("loadEnvAsync", () => {
         it("transforms keys to camelCase", async () => {
             const result = await loadEnvAsync(
                 {files: [".env.basic"], transformKeys: true, basePath: fixtures},
-                {HOST: toString, PORT: toInt, APP_NAME: toString}
+                {HOST: toString(), PORT: toInt(), APP_NAME: toString()}
             );
             expect(result).toEqual({
                 ok: true,
@@ -70,7 +70,7 @@ describe("loadEnvAsync", () => {
         it("returns failure for nonexistent file", async () => {
             const result = await loadEnvAsync(
                 {files: ["does-not-exist.env"], transformKeys: false, basePath: fixtures},
-                {FOO: toString}
+                {FOO: toString()}
             );
             expect(result.ok).toBe(false);
             if (!result.ok) {
@@ -79,7 +79,7 @@ describe("loadEnvAsync", () => {
         });
 
         it("includes source and line in transform errors", async () => {
-            const result = await loadEnvAsync(opts([".env.basic"]), {HOST: toInt});
+            const result = await loadEnvAsync(opts([".env.basic"]), {HOST: toInt()});
             expect(result.ok).toBe(false);
             if (!result.ok) {
                 expect(result.ctx[0]).toMatchObject({
@@ -88,16 +88,16 @@ describe("loadEnvAsync", () => {
                     line: 1,
                 });
                 expect(result.ctx[0]!.message).toContain(
-                    "failed to convert 'localhost' to a number"
+                    "'localhost' is not a valid integer"
                 );
             }
         });
 
         it("accumulates multiple errors", async () => {
             const result = await loadEnvAsync(opts([".env.basic"]), {
-                HOST: toInt,
-                MISSING: withRequired(toString),
-                PORT: toInt,
+                HOST: toInt(),
+                MISSING: withRequired(toString()),
+                PORT: toInt(),
             });
             expect(result.ok).toBe(false);
             if (!result.ok) {
@@ -108,9 +108,9 @@ describe("loadEnvAsync", () => {
         });
 
         it("unwrap throws with formatted error", async () => {
-            const result = await loadEnvAsync(opts([".env.basic"]), {HOST: toInt});
+            const result = await loadEnvAsync(opts([".env.basic"]), {HOST: toInt()});
             expect(() => unwrap(result)).toThrow(
-                ".env.basic:L1: HOST: failed to convert 'localhost' to a number"
+                ".env.basic:L1: HOST: 'localhost' is not a valid integer"
             );
         });
     });
@@ -120,9 +120,9 @@ describe("loadEnvAsync", () => {
     describe("variable expansion", () => {
         it("expands ${VAR} and $VAR references", async () => {
             const result = await loadEnvAsync(opts([".env.expansion"]), {
-                HOST: toString,
-                PORT: toString,
-                URL: toString,
+                HOST: toString(),
+                PORT: toString(),
+                URL: toString(),
             });
             expect(result).toEqual({
                 ok: true,
@@ -132,9 +132,9 @@ describe("loadEnvAsync", () => {
 
         it("does NOT expand variables in single-quoted values", async () => {
             const result = await loadEnvAsync(opts([".env.expansion"]), {
-                HOST: toString,
-                PORT: toString,
-                SINGLE_QUOTED: toString,
+                HOST: toString(),
+                PORT: toString(),
+                SINGLE_QUOTED: toString(),
             });
             if (result.ok) {
                 expect(result.data.SINGLE_QUOTED).toBe("$HOST:${PORT}");
@@ -160,7 +160,7 @@ describe("loadEnvAsync", () => {
                     basePath: fixtures,
                     includeProcessEnv: "fallback",
                 },
-                {PRESENT: toString, [ENV_KEY]: toString}
+                {PRESENT: toString(), [ENV_KEY]: toString()}
             );
             expect(result).toEqual({
                 ok: true,
@@ -177,7 +177,7 @@ describe("loadEnvAsync", () => {
                     basePath: fixtures,
                     includeProcessEnv: "override",
                 },
-                {PRESENT: toString}
+                {PRESENT: toString()}
             );
             expect(result).toEqual({ok: true, data: {PRESENT: "overwritten"}});
             delete process.env.PRESENT;
@@ -191,7 +191,7 @@ describe("loadEnvAsync", () => {
             let capturedSource: string | undefined;
             const spy = (key: string, val: string | undefined, ctx: TransformContext) => {
                 capturedSource = ctx.source;
-                return toString(key, val, ctx);
+                return toString()(key, val, ctx);
             };
 
             await loadEnvAsync(opts([".env.basic"]), {HOST: spy});
@@ -202,7 +202,7 @@ describe("loadEnvAsync", () => {
             let capturedSource: string | undefined;
             const spy = (key: string, val: string | undefined, ctx: TransformContext) => {
                 capturedSource = ctx.source;
-                return toString(key, val, ctx);
+                return toString()(key, val, ctx);
             };
 
             await loadEnvAsync(
@@ -223,9 +223,9 @@ describe("loadEnvAsync", () => {
         it("infers correct types with transformKeys: false", async () => {
             const result = unwrap(
                 await loadEnvAsync(opts([".env.basic"]), {
-                    HOST: toString,
-                    PORT: toInt,
-                    DEBUG: toBool,
+                    HOST: toString(),
+                    PORT: toInt(),
+                    DEBUG: toBool(),
                 })
             );
 
@@ -242,7 +242,7 @@ describe("loadEnvAsync", () => {
             const result = unwrap(
                 await loadEnvAsync(
                     {files: [".env.basic"], transformKeys: true, basePath: fixtures},
-                    {HOST: toString, PORT: toInt, APP_NAME: toString}
+                    {HOST: toString(), PORT: toInt(), APP_NAME: toString()}
                 )
             );
 
@@ -258,9 +258,9 @@ describe("loadEnvAsync", () => {
         it("infers withDefault, withOptional, and toEnum", async () => {
             const result = unwrap(
                 await loadEnvAsync(opts([".env.missing"]), {
-                    PRESENT: withRequired(toString),
-                    ABSENT_DEFAULT: withDefault(toInt, 42),
-                    ABSENT_OPTIONAL: withOptional(toBool),
+                    PRESENT: withRequired(toString()),
+                    ABSENT_DEFAULT: withDefault(toInt(), 42),
+                    ABSENT_OPTIONAL: withOptional(toBool()),
                 })
             );
 
