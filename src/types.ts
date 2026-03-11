@@ -12,7 +12,6 @@ export type SchemaParser<TSchema = any, TReturn = any> = (
 export type TransformContext = {
     expandedEnv: Record<string, string>;
     schemaParser?: SchemaParser;
-    radix?: (key: string) => number | undefined;
     log?: Logger;
     line?: number;
     source?: string;
@@ -24,12 +23,12 @@ export type TransformFn<TData = any> = (
     ctx: TransformContext
 ) => Result<TData, string>;
 
+export type RefineCheck<T> = (key: string, val: T, ctx: TransformContext) => Result<T>;
+
 export type InferValueFromTransformFn<TTransform extends TransformFn> =
     ReturnType<TTransform> extends Result<infer TData> ? TData : never;
 
 export type Config = Record<string, TransformFn>;
-
-export type RadixFn = (key: string) => number | undefined;
 
 export type CamelCase<S extends string> = S extends `${infer Head}_${infer Tail}`
     ? `${Lowercase<Head>}${PascalTail<Tail>}`
