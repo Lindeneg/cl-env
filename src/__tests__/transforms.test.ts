@@ -24,6 +24,7 @@ import {
     failure,
     type SchemaParser,
     type TransformContext,
+    type RefineCheck,
 } from "../index.js";
 
 const fixtures = join(import.meta.dirname, "fixtures");
@@ -708,11 +709,26 @@ describe("refine", () => {
             expect(result.ok).toBe(false);
         });
 
-        it("withDefault + refine", () => {
+        it("withDefault + refine uses default for missing", () => {
             const result = loadEnv(opts([".env.missing"]), {
                 ABSENT: withDefault(refine(toInt(), inRange(0, 100)), 50),
             });
             expect(result).toEqual({ok: true, data: {ABSENT: 50}});
+        });
+
+        it("withDefault + refine validates when present", () => {
+            const result = loadEnv(opts([".env.basic"]), {
+                PORT: withDefault(refine(toInt(), inRange(1, 100)), 50),
+            });
+            // PORT=3000 exceeds inRange(1, 100)
+            expect(result.ok).toBe(false);
+        });
+
+        it("withDefault + refine passes when present and valid", () => {
+            const result = loadEnv(opts([".env.basic"]), {
+                PORT: withDefault(refine(toInt(), inRange(1, 65535)), 50),
+            });
+            expect(result).toEqual({ok: true, data: {PORT: 3000}});
         });
 
         it("withOptional + refine returns undefined for missing", () => {
@@ -741,6 +757,110 @@ describe("refine", () => {
                 TAGS: withRequired(refine(toStringArray(), maxLength(5))),
             });
             expect(result).toEqual({ok: true, data: {TAGS: ["foo", "bar", "baz"]}});
+        });
+    });
+
+    describe("bare refine (no wrapper)", () => {
+        it("passes when value is present and valid", () => {
+            const result = loadEnv(opts([".env.basic"]), {
+                PORT: refine(toInt(), inRange(1, 65535)),
+            });
+            expect(result).toEqual({ok: true, data: {PORT: 3000}});
+        });
+
+        it("fails when value is present and invalid", () => {
+            const result = loadEnv(opts([".env.basic"]), {
+                PORT: refine(toInt(), inRange(1, 100)),
+            });
+            expect(result.ok).toBe(false);
+        });
+
+        it("fails with 'no value provided' when key is missing", () => {
+            const result = loadEnv(opts([".env.missing"]), {
+                ABSENT: refine(toInt(), inRange(0, 100)),
+            });
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.ctx[0]!.message).toContain("no value provided");
+        });
+    });
+
+    describe("refine with toEnum", () => {
+        it("passes when value matches enum and check", () => {
+            const result = loadEnv(opts([".env.custom"]), {
+                LOG_LEVEL: refine(
+                    toEnum("debug", "info", "warn", "error"),
+                    minLength(4)
+                ),
+            });
+            expect(result).toEqual({ok: true, data: {LOG_LEVEL: "debug"}});
+        });
+
+        it("fails when value matches enum but fails check", () => {
+            const result = loadEnv(opts([".env.custom"]), {
+                LOG_LEVEL: refine(
+                    toEnum("debug", "info", "warn", "error"),
+                    minLength(6)
+                ),
+            });
+            // "debug" is 5 chars, fails minLength(6)
+            expect(result.ok).toBe(false);
+        });
+
+        it("fails when value does not match enum", () => {
+            const result = loadEnv(opts([".env.basic"]), {
+                HOST: refine(
+                    toEnum("debug", "info", "warn", "error"),
+                    minLength(1)
+                ),
+            });
+            // "localhost" is not in the enum
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.ctx[0]!.message).toContain("expected one of");
+        });
+    });
+
+    describe("custom RefineCheck", () => {
+        it("custom check passes", () => {
+            const isEven: RefineCheck<number> = (key, val) =>
+                val % 2 === 0 ? success(val) : failure(`${key}: expected even, got ${val}`);
+
+            const result = loadEnv(opts([".env.basic"]), {
+                PORT: refine(toInt(), isEven),
+            });
+            // PORT=3000, which is even
+            expect(result).toEqual({ok: true, data: {PORT: 3000}});
+        });
+
+        it("custom check fails with correct message", () => {
+            const isOdd: RefineCheck<number> = (key, val) =>
+                val % 2 !== 0 ? success(val) : failure(`${key}: expected odd, got ${val}`);
+
+            const result = loadEnv(opts([".env.basic"]), {
+                PORT: refine(toInt(), isOdd),
+            });
+            // PORT=3000, which is even
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.ctx[0]!.message).toContain("expected odd, got 3000");
+        });
+
+        it("custom check composes with wrappers", () => {
+            const isPositive: RefineCheck<number> = (key, val) =>
+                val > 0 ? success(val) : failure(`${key}: must be positive`);
+
+            const result = loadEnv(opts([".env.missing"]), {
+                ABSENT: withDefault(refine(toInt(), isPositive), 42),
+            });
+            expect(result).toEqual({ok: true, data: {ABSENT: 42}});
+        });
+
+        it("custom check on string transform", () => {
+            const noSpaces: RefineCheck<string> = (key, val) =>
+                val.includes(" ") ? failure(`${key}: must not contain spaces`) : success(val);
+
+            const result = loadEnv(opts([".env.basic"]), {
+                HOST: refine(toString(), noSpaces),
+            });
+            expect(result).toEqual({ok: true, data: {HOST: "localhost"}});
         });
     });
 });

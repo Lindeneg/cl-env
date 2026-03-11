@@ -18,6 +18,7 @@ import {
     refine,
     inRange,
     nonEmpty,
+    minLength,
     maxLength,
     success,
     failure,
@@ -377,5 +378,61 @@ describe("type inference", () => {
 
         type assertion = Expect<Equal<typeof result, {ABSENT: number}>>;
         expect(result.ABSENT).toBe(50);
+    });
+
+    it("infers bare refine type (no wrapper)", () => {
+        const result = unwrap(
+            loadEnv(opts([".env.basic"]), {
+                PORT: refine(toInt(), inRange(1, 65535)),
+            })
+        );
+
+        type assertion = Expect<Equal<typeof result, {PORT: number}>>;
+        expect(result.PORT).toBe(3000);
+    });
+
+    it("infers refine with toEnum as narrowed union", () => {
+        const result = unwrap(
+            loadEnv(opts([".env.custom"]), {
+                LOG_LEVEL: refine(
+                    toEnum("debug", "info", "warn", "error"),
+                    minLength(1)
+                ),
+            })
+        );
+
+        type assertion = Expect<
+            Equal<typeof result, {LOG_LEVEL: "debug" | "info" | "warn" | "error"}>
+        >;
+        expect(result.LOG_LEVEL).toBe("debug");
+    });
+
+    it("infers withOptional + refine + toEnum as union | undefined", () => {
+        const result = unwrap(
+            loadEnv(opts([".env.missing"]), {
+                ABSENT: withOptional(
+                    refine(toEnum("a", "b", "c"), minLength(1))
+                ),
+            })
+        );
+
+        type assertion = Expect<
+            Equal<typeof result, {ABSENT: "a" | "b" | "c" | undefined}>
+        >;
+        expect(result.ABSENT).toBeUndefined();
+    });
+
+    it("infers custom RefineCheck preserves transform type", () => {
+        const isEven = (key: string, val: number) =>
+            val % 2 === 0 ? success(val) : failure(`${key}: not even`);
+
+        const result = unwrap(
+            loadEnv(opts([".env.basic"]), {
+                PORT: refine(toInt(), isEven),
+            })
+        );
+
+        type assertion = Expect<Equal<typeof result, {PORT: number}>>;
+        expect(result.PORT).toBe(3000);
     });
 });
