@@ -23,10 +23,10 @@ describe("parser", () => {
     describe("basic key=value", () => {
         it("reads and parses a simple .env file", () => {
             const result = loadEnv(opts([".env.basic"]), {
-                HOST: toString,
-                PORT: toInt,
-                DEBUG: toBool,
-                APP_NAME: toString,
+                HOST: toString(),
+                PORT: toInt(),
+                DEBUG: toBool(),
+                APP_NAME: toString(),
             });
             expect(result).toEqual({
                 ok: true,
@@ -35,19 +35,19 @@ describe("parser", () => {
         });
 
         it("ignores keys not present in config", () => {
-            const result = loadEnv(opts([".env.basic"]), {HOST: toString});
+            const result = loadEnv(opts([".env.basic"]), {HOST: toString()});
             expect(result).toEqual({ok: true, data: {HOST: "localhost"}});
         });
     });
 
     describe("empty and special values", () => {
         it("handles empty values (KEY=)", () => {
-            const result = loadEnv(opts([".env.empty-value"]), {EMPTY_KEY: toString});
+            const result = loadEnv(opts([".env.empty-value"]), {EMPTY_KEY: toString()});
             expect(result).toEqual({ok: true, data: {EMPTY_KEY: ""}});
         });
 
         it("empty value is not undefined — transforms receive empty string", () => {
-            const result = loadEnv(opts([".env.empty-value"]), {EMPTY_KEY: toBool});
+            const result = loadEnv(opts([".env.empty-value"]), {EMPTY_KEY: toBool()});
             expect(result.ok).toBe(false);
             if (!result.ok) {
                 // should fail with "expected boolean" not "no value provided"
@@ -56,12 +56,12 @@ describe("parser", () => {
         });
 
         it("handles values containing equals signs", () => {
-            const result = loadEnv(opts([".env.messy"]), {EXTRA_EQUALS: toString});
+            const result = loadEnv(opts([".env.messy"]), {EXTRA_EQUALS: toString()});
             expect(result).toEqual({ok: true, data: {EXTRA_EQUALS: "a=b=c"}});
         });
 
         it("handles URLs with equals in query params", () => {
-            const result = loadEnv(opts([".env.complex"]), {DATABASE_URL: toString});
+            const result = loadEnv(opts([".env.complex"]), {DATABASE_URL: toString()});
             expect(result).toEqual({
                 ok: true,
                 data: {DATABASE_URL: "postgres://user:pass@localhost:5432/mydb?sslmode=require"},
@@ -71,14 +71,14 @@ describe("parser", () => {
 
     describe("whitespace handling", () => {
         it("trims whitespace from keys and values", () => {
-            const result = loadEnv(opts([".env.messy"]), {SPACED: toString});
+            const result = loadEnv(opts([".env.messy"]), {SPACED: toString()});
             expect(result).toEqual({ok: true, data: {SPACED: "hello"}});
         });
 
         it("skips empty lines and lines without =", () => {
             const result = loadEnv(opts([".env.messy"]), {
-                SPACED: toString,
-                ANOTHER: toString,
+                SPACED: toString(),
+                ANOTHER: toString(),
             });
             expect(result).toEqual({
                 ok: true,
@@ -90,9 +90,9 @@ describe("parser", () => {
     describe("comments", () => {
         it("skips lines starting with #", () => {
             const result = loadEnv(opts([".env.comments"]), {
-                HOST: toString,
-                PORT: toInt,
-                DEBUG: toBool,
+                HOST: toString(),
+                PORT: toInt(),
+                DEBUG: toBool(),
             });
             expect(result).toEqual({
                 ok: true,
@@ -101,12 +101,12 @@ describe("parser", () => {
         });
 
         it("skips indented comments", () => {
-            const result = loadEnv(opts([".env.comments"]), {HOST: toString, DEBUG: toBool});
+            const result = loadEnv(opts([".env.comments"]), {HOST: toString(), DEBUG: toBool()});
             expect(result).toEqual({ok: true, data: {HOST: "localhost", DEBUG: true}});
         });
 
         it("commented-out key is treated as missing", () => {
-            const result = loadEnv(opts([".env.comments"]), {KEY: withRequired(toString)});
+            const result = loadEnv(opts([".env.comments"]), {KEY: withRequired(toString())});
             expect(result.ok).toBe(false);
             if (!result.ok) {
                 expect(result.ctx[0]).toMatchObject({
@@ -120,27 +120,27 @@ describe("parser", () => {
 
     describe("inline comments", () => {
         it("strips inline comments preceded by whitespace", () => {
-            const result = loadEnv(opts([".env.inline-comments"]), {BARE: toString});
+            const result = loadEnv(opts([".env.inline-comments"]), {BARE: toString()});
             expect(result).toEqual({ok: true, data: {BARE: "value"}});
         });
 
         it("does not treat # without preceding space as comment", () => {
-            const result = loadEnv(opts([".env.inline-comments"]), {NO_SPACE: toString});
+            const result = loadEnv(opts([".env.inline-comments"]), {NO_SPACE: toString()});
             expect(result).toEqual({ok: true, data: {NO_SPACE: "value#not-a-comment"}});
         });
 
         it("preserves # inside double quotes", () => {
-            const result = loadEnv(opts([".env.inline-comments"]), {QUOTED_DOUBLE: toString});
+            const result = loadEnv(opts([".env.inline-comments"]), {QUOTED_DOUBLE: toString()});
             expect(result).toEqual({ok: true, data: {QUOTED_DOUBLE: "has # inside"}});
         });
 
         it("preserves # inside single quotes", () => {
-            const result = loadEnv(opts([".env.inline-comments"]), {QUOTED_SINGLE: toString});
+            const result = loadEnv(opts([".env.inline-comments"]), {QUOTED_SINGLE: toString()});
             expect(result).toEqual({ok: true, data: {QUOTED_SINGLE: "has # inside"}});
         });
 
         it("value starting with # is not treated as comment", () => {
-            const result = loadEnv(opts([".env.inline-comments"]), {HASH_START: toString});
+            const result = loadEnv(opts([".env.inline-comments"]), {HASH_START: toString()});
             expect(result).toEqual({ok: true, data: {HASH_START: "#not-a-comment"}});
         });
     });
@@ -148,9 +148,9 @@ describe("parser", () => {
     describe("export stripping", () => {
         it("strips export prefix from lines", () => {
             const result = loadEnv(opts([".env.export"]), {
-                HOST: toString,
-                PORT: toInt,
-                API_KEY: toString,
+                HOST: toString(),
+                PORT: toInt(),
+                API_KEY: toString(),
             });
             expect(result).toEqual({
                 ok: true,
@@ -159,12 +159,12 @@ describe("parser", () => {
         });
 
         it("mixes export and non-export lines", () => {
-            const result = loadEnv(opts([".env.export"]), {HOST: toString, DEBUG: toBool});
+            const result = loadEnv(opts([".env.export"]), {HOST: toString(), DEBUG: toBool()});
             expect(result).toEqual({ok: true, data: {HOST: "localhost", DEBUG: true}});
         });
 
         it("does not strip 'export' without trailing space", () => {
-            const result = loadEnv(opts([".env.export"]), {FOO: withRequired(toString)});
+            const result = loadEnv(opts([".env.export"]), {FOO: withRequired(toString())});
             expect(result.ok).toBe(false);
             if (!result.ok) {
                 expect(result.ctx[0]).toMatchObject({
@@ -178,30 +178,30 @@ describe("parser", () => {
 
     describe("quote handling", () => {
         it("strips surrounding double quotes", () => {
-            const result = loadEnv(opts([".env.quotes"]), {DOUBLE: toString});
+            const result = loadEnv(opts([".env.quotes"]), {DOUBLE: toString()});
             expect(result).toEqual({ok: true, data: {DOUBLE: "hello world"}});
         });
 
         it("strips surrounding single quotes", () => {
-            const result = loadEnv(opts([".env.quotes"]), {SINGLE: toString});
+            const result = loadEnv(opts([".env.quotes"]), {SINGLE: toString()});
             expect(result).toEqual({ok: true, data: {SINGLE: "hello world"}});
         });
 
         it("strips surrounding backticks", () => {
-            const result = loadEnv(opts([".env.quotes"]), {BACKTICK: toString});
+            const result = loadEnv(opts([".env.quotes"]), {BACKTICK: toString()});
             expect(result).toEqual({ok: true, data: {BACKTICK: "hello world"}});
         });
 
         it("unclosed double quote reads to EOF (mismatched quotes)", () => {
-            const result = loadEnv(opts([".env.quotes"]), {MISMATCH: toString});
+            const result = loadEnv(opts([".env.quotes"]), {MISMATCH: toString()});
             // MISMATCH="hello world' — no closing ", parser consumes to EOF including trailing newline
             expect(result).toEqual({ok: true, data: {MISMATCH: "hello world'\n"}});
         });
 
         it("quotes are stripped before transform runs", () => {
             const result = loadEnv(opts([".env.basic"]), {
-                PORT: toInt,
-                DEBUG: toBool,
+                PORT: toInt(),
+                DEBUG: toBool(),
             });
             expect(result).toEqual({ok: true, data: {PORT: 3000, DEBUG: true}});
         });
@@ -209,61 +209,61 @@ describe("parser", () => {
 
     describe("escape sequences", () => {
         it("expands \\n in double-quoted values", () => {
-            const result = loadEnv(opts([".env.escapes"]), {NEWLINE: toString});
+            const result = loadEnv(opts([".env.escapes"]), {NEWLINE: toString()});
             expect(result).toEqual({ok: true, data: {NEWLINE: "hello\nworld"}});
         });
 
         it("expands \\t in double-quoted values", () => {
-            const result = loadEnv(opts([".env.escapes"]), {TAB: toString});
+            const result = loadEnv(opts([".env.escapes"]), {TAB: toString()});
             expect(result).toEqual({ok: true, data: {TAB: "hello\tworld"}});
         });
 
         it("expands \\r in double-quoted values", () => {
-            const result = loadEnv(opts([".env.escapes"]), {CARRIAGE: toString});
+            const result = loadEnv(opts([".env.escapes"]), {CARRIAGE: toString()});
             expect(result).toEqual({ok: true, data: {CARRIAGE: "hello\rworld"}});
         });
 
         it("expands \\\\ to single backslash in double-quoted values", () => {
-            const result = loadEnv(opts([".env.escapes"]), {BACKSLASH: toString});
+            const result = loadEnv(opts([".env.escapes"]), {BACKSLASH: toString()});
             expect(result).toEqual({ok: true, data: {BACKSLASH: "hello\\world"}});
         });
 
         it("expands escaped quotes in double-quoted values", () => {
-            const result = loadEnv(opts([".env.escapes"]), {ESCAPED_QUOTE: toString});
+            const result = loadEnv(opts([".env.escapes"]), {ESCAPED_QUOTE: toString()});
             expect(result).toEqual({ok: true, data: {ESCAPED_QUOTE: 'say "hello"'}});
         });
 
         it("does NOT expand escapes in single-quoted values", () => {
-            const result = loadEnv(opts([".env.escapes"]), {SINGLE_LITERAL: toString});
+            const result = loadEnv(opts([".env.escapes"]), {SINGLE_LITERAL: toString()});
             expect(result).toEqual({ok: true, data: {SINGLE_LITERAL: "hello\\nworld"}});
         });
 
         it("does NOT expand escapes in backtick-quoted values", () => {
-            const result = loadEnv(opts([".env.escapes"]), {BACKTICK_LITERAL: toString});
+            const result = loadEnv(opts([".env.escapes"]), {BACKTICK_LITERAL: toString()});
             expect(result).toEqual({ok: true, data: {BACKTICK_LITERAL: "hello\\nworld"}});
         });
     });
 
     describe("multiline values", () => {
         it("supports multiline in double quotes", () => {
-            const result = loadEnv(opts([".env.multiline"]), {MULTI_DOUBLE: toString});
+            const result = loadEnv(opts([".env.multiline"]), {MULTI_DOUBLE: toString()});
             expect(result).toEqual({ok: true, data: {MULTI_DOUBLE: "line1\nline2\nline3"}});
         });
 
         it("supports multiline in single quotes", () => {
-            const result = loadEnv(opts([".env.multiline"]), {MULTI_SINGLE: toString});
+            const result = loadEnv(opts([".env.multiline"]), {MULTI_SINGLE: toString()});
             expect(result).toEqual({ok: true, data: {MULTI_SINGLE: "line1\nline2\nline3"}});
         });
 
         it("supports multiline in backticks", () => {
-            const result = loadEnv(opts([".env.multiline"]), {MULTI_BACKTICK: toString});
+            const result = loadEnv(opts([".env.multiline"]), {MULTI_BACKTICK: toString()});
             expect(result).toEqual({ok: true, data: {MULTI_BACKTICK: "line1\nline2\nline3"}});
         });
 
         it("parses entries after multiline values correctly", () => {
             const result = loadEnv(opts([".env.multiline"]), {
-                MULTI_DOUBLE: toString,
-                AFTER: toString,
+                MULTI_DOUBLE: toString(),
+                AFTER: toString(),
             });
             expect(result).toEqual({
                 ok: true,
@@ -287,7 +287,7 @@ describe("parser", () => {
         it("strips BOM and parses correctly", () => {
             const result = loadEnv(
                 {files: [".env.bom"], transformKeys: false, basePath: tmpDir},
-                {HOST: toString, PORT: toInt}
+                {HOST: toString(), PORT: toInt()}
             );
             expect(result).toEqual({ok: true, data: {HOST: "localhost", PORT: 3000}});
         });
@@ -309,7 +309,7 @@ describe("parser", () => {
         it("handles CRLF line endings", () => {
             const result = loadEnv(
                 {files: [".env.crlf"], transformKeys: false, basePath: tmpDir},
-                {FOO: toString, BAR: toString}
+                {FOO: toString(), BAR: toString()}
             );
             expect(result).toEqual({ok: true, data: {FOO: "bar", BAR: "baz"}});
         });
@@ -317,7 +317,7 @@ describe("parser", () => {
         it("handles bare CR line endings", () => {
             const result = loadEnv(
                 {files: [".env.cr"], transformKeys: false, basePath: tmpDir},
-                {FOO: toString, BAR: toString}
+                {FOO: toString(), BAR: toString()}
             );
             expect(result).toEqual({ok: true, data: {FOO: "bar", BAR: "baz"}});
         });
@@ -329,8 +329,8 @@ describe("parser", () => {
             const logger: Logger = (level, message) => messages.push({level, message});
 
             loadEnv(opts([".env.unterminated-double"], {logger}), {
-                GOOD: toString,
-                BAD_DOUBLE: toString,
+                GOOD: toString(),
+                BAD_DOUBLE: toString(),
             });
 
             const warn = messages.find(
@@ -346,8 +346,8 @@ describe("parser", () => {
             const logger: Logger = (level, message) => messages.push({level, message});
 
             loadEnv(opts([".env.unterminated-single"], {logger}), {
-                GOOD: toString,
-                BAD_SINGLE: toString,
+                GOOD: toString(),
+                BAD_SINGLE: toString(),
             });
 
             const warn = messages.find(
@@ -362,8 +362,8 @@ describe("parser", () => {
             const logger: Logger = (level, message) => messages.push({level, message});
 
             loadEnv(opts([".env.unterminated-backtick"], {logger}), {
-                GOOD: toString,
-                BAD_BACKTICK: toString,
+                GOOD: toString(),
+                BAD_BACKTICK: toString(),
             });
 
             const warn = messages.find(
@@ -378,10 +378,10 @@ describe("parser", () => {
             const logger: Logger = (level, message) => messages.push({level, message});
 
             const result = loadEnv(opts([".env.unterminated-combined"], {logger}), {
-                GOOD: toString,
-                BAD: toString,
-                AFTER_BAD: withOptional(toString),
-                LAST: withOptional(toString),
+                GOOD: toString(),
+                BAD: toString(),
+                AFTER_BAD: withOptional(toString()),
+                LAST: withOptional(toString()),
             });
 
             expect(result.ok).toBe(true);
@@ -408,11 +408,11 @@ describe("parser", () => {
             const logger: Logger = (level, message) => messages.push({level, message});
 
             loadEnv(opts([".env.invalid-keys"], {logger}), {
-                VALID_KEY: toString,
-                "123ABC": toString,
-                "API-KEY": toString,
-                "API.KEY": toString,
-                _UNDERSCORE: toString,
+                VALID_KEY: toString(),
+                "123ABC": toString(),
+                "API-KEY": toString(),
+                "API.KEY": toString(),
+                _UNDERSCORE: toString(),
             });
 
             const invalidWarnings = messages.filter(
@@ -426,7 +426,7 @@ describe("parser", () => {
             const messages: Array<{level: LogLevel; message: string}> = [];
             const logger: Logger = (level, message) => messages.push({level, message});
 
-            loadEnv(opts([".env.basic"], {logger}), {HOST: toString});
+            loadEnv(opts([".env.basic"], {logger}), {HOST: toString()});
 
             const invalidWarnings = messages.filter(
                 (m) => m.level === "warn" && m.message.includes("invalid key name")
@@ -438,7 +438,7 @@ describe("parser", () => {
             const messages: Array<{level: LogLevel; message: string}> = [];
             const logger: Logger = (level, message) => messages.push({level, message});
 
-            loadEnv(opts([".env.unterminated-double"], {logger}), {BAD_DOUBLE: toString});
+            loadEnv(opts([".env.unterminated-double"], {logger}), {BAD_DOUBLE: toString()});
 
             const warn = messages.find(
                 (m) => m.level === "warn" && m.message.includes("unterminated double quote")

@@ -21,14 +21,14 @@ describe("error handling", () => {
     it("returns failure for nonexistent file", () => {
         const result = loadEnv(
             {files: ["does-not-exist.env"], transformKeys: false, basePath: fixtures},
-            {FOO: toString}
+            {FOO: toString()}
         );
         expect(result.ok).toBe(false);
     });
 
     it("includes source and line in transform errors", () => {
         // HOST is on line 1 of .env.basic, value "localhost" fails toInt
-        const result = loadEnv(opts([".env.basic"]), {HOST: toInt});
+        const result = loadEnv(opts([".env.basic"]), {HOST: toInt()});
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.ctx[0]).toMatchObject({
@@ -36,7 +36,7 @@ describe("error handling", () => {
                 source: ".env.basic",
                 line: 1,
             });
-            expect(result.ctx[0]!.message).toContain("failed to convert 'localhost' to a number");
+            expect(result.ctx[0]!.message).toContain("'localhost' is not a valid integer");
         }
     });
 
@@ -74,9 +74,9 @@ describe("error handling", () => {
 
     it("accumulates multiple errors", () => {
         const result = loadEnv(opts([".env.basic"]), {
-            HOST: toInt,
-            MISSING: withRequired(toString),
-            PORT: toInt,
+            HOST: toInt(),
+            MISSING: withRequired(toString()),
+            PORT: toInt(),
         });
         expect(result.ok).toBe(false);
         if (!result.ok) {
@@ -88,20 +88,20 @@ describe("error handling", () => {
     });
 
     it("exact EnvError for transform failure with source and line", () => {
-        const result = loadEnv(opts([".env.basic"]), {HOST: toInt});
+        const result = loadEnv(opts([".env.basic"]), {HOST: toInt()});
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.ctx[0]).toEqual({
                 key: "HOST",
                 source: ".env.basic",
                 line: 1,
-                message: "HOST: failed to convert 'localhost' to a number",
+                message: "HOST: 'localhost' is not a valid integer",
             });
         }
     });
 
     it("exact EnvError for missing key (no source, no line)", () => {
-        const result = loadEnv(opts([".env.basic"]), {NOPE: withRequired(toString)});
+        const result = loadEnv(opts([".env.basic"]), {NOPE: withRequired(toString())});
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.ctx[0]).toEqual({
@@ -132,7 +132,7 @@ describe("error handling", () => {
     it("exact EnvError for nonexistent file", () => {
         const result = loadEnv(
             {files: ["does-not-exist.env"], transformKeys: false, basePath: fixtures},
-            {FOO: toString}
+            {FOO: toString()}
         );
         expect(result.ok).toBe(false);
         if (!result.ok) {
@@ -169,7 +169,7 @@ describe("error handling", () => {
 
 describe("no sources configured", () => {
     it("returns failure when files is empty and no other sources", () => {
-        const result = loadEnv({files: [], transformKeys: false}, {FOO: toString});
+        const result = loadEnv({files: [], transformKeys: false}, {FOO: toString()});
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.ctx[0]!.message).toContain("no sources configured");
@@ -181,7 +181,7 @@ describe("no sources configured", () => {
         process.env[key] = "hello";
         const result = loadEnv(
             {files: [], transformKeys: false, includeProcessEnv: "fallback"},
-            {[key]: toString}
+            {[key]: toString()}
         );
         expect(result.ok).toBe(true);
         if (result.ok) {
@@ -193,7 +193,7 @@ describe("no sources configured", () => {
     it("succeeds when files is empty but optionalFiles has entries", () => {
         const result = loadEnv(
             {files: [], optionalFiles: [".env.basic"], transformKeys: false, basePath: fixtures},
-            {HOST: toString}
+            {HOST: toString()}
         );
         expect(result.ok).toBe(true);
         if (result.ok) {
@@ -211,7 +211,7 @@ describe("no sources configured", () => {
                 transformKeys: false,
                 includeProcessEnv: "fallback",
             },
-            {[key]: toString}
+            {[key]: toString()}
         );
         expect(result.ok).toBe(true);
         if (result.ok) {
@@ -225,20 +225,20 @@ describe("no sources configured", () => {
 
 describe("unwrap error messages", () => {
     it("formats error with source and line", () => {
-        expect(() => unwrap(loadEnv(opts([".env.basic"]), {HOST: toInt}))).toThrow(
-            ".env.basic:L1: HOST: failed to convert 'localhost' to a number"
+        expect(() => unwrap(loadEnv(opts([".env.basic"]), {HOST: toInt()}))).toThrow(
+            ".env.basic:L1: HOST: 'localhost' is not a valid integer"
         );
     });
 
     it("formats error without source for missing keys", () => {
-        expect(() => unwrap(loadEnv(opts([".env.basic"]), {NOPE: withRequired(toString)}))).toThrow(
-            "NOPE: is required but is missing"
-        );
+        expect(() =>
+            unwrap(loadEnv(opts([".env.basic"]), {NOPE: withRequired(toString())}))
+        ).toThrow("NOPE: is required but is missing");
     });
 
     it("does not prefix 'none:' for missing key errors", () => {
         try {
-            unwrap(loadEnv(opts([".env.basic"]), {NOPE: withRequired(toString)}));
+            unwrap(loadEnv(opts([".env.basic"]), {NOPE: withRequired(toString())}));
         } catch (e: any) {
             expect(e.message).not.toContain("none:");
         }
@@ -246,10 +246,10 @@ describe("unwrap error messages", () => {
 
     it("does not duplicate key name in message", () => {
         try {
-            unwrap(loadEnv(opts([".env.basic"]), {HOST: toInt}));
+            unwrap(loadEnv(opts([".env.basic"]), {HOST: toInt()}));
         } catch (e: any) {
-            // should be ".env.basic:L1: HOST: failed to ..."
-            // not ".env.basic:L1: HOST: HOST: failed to ..."
+            // should be ".env.basic:L1: HOST: ..."
+            // not ".env.basic:L1: HOST: HOST: ..."
             const matches = e.message.match(/HOST:/g);
             expect(matches).toHaveLength(1);
         }
@@ -259,20 +259,22 @@ describe("unwrap error messages", () => {
         try {
             unwrap(
                 loadEnv(opts([".env.basic"]), {
-                    HOST: toInt,
-                    MISSING: withRequired(toString),
+                    HOST: toInt(),
+                    MISSING: withRequired(toString()),
                 })
             );
         } catch (e: any) {
             const lines = e.message.trimStart().split("\n");
             expect(lines).toHaveLength(2);
-            expect(lines[0]).toBe(".env.basic:L1: HOST: failed to convert 'localhost' to a number");
+            expect(lines[0]).toBe(
+                ".env.basic:L1: HOST: 'localhost' is not a valid integer"
+            );
             expect(lines[1]).toBe("MISSING: is required but is missing");
         }
     });
 
     it("formats bare transform 'no value provided' without source prefix", () => {
-        expect(() => unwrap(loadEnv(opts([".env.basic"]), {NOPE: toBool}))).toThrow(
+        expect(() => unwrap(loadEnv(opts([".env.basic"]), {NOPE: toBool()}))).toThrow(
             "NOPE: no value provided (use withDefault or withRequired)"
         );
     });
@@ -282,7 +284,7 @@ describe("unwrap error messages", () => {
             unwrap(
                 loadEnv(
                     {files: ["does-not-exist.env"], transformKeys: false, basePath: fixtures},
-                    {FOO: toString}
+                    {FOO: toString()}
                 )
             );
         } catch (e: any) {
@@ -295,17 +297,19 @@ describe("unwrap error messages", () => {
         try {
             unwrap(
                 loadEnv(opts([".env.basic"]), {
-                    HOST: toInt,
-                    PORT: withDefault(toInt, 3000),
-                    MISSING_REQ: withRequired(toString),
-                    MISSING_BARE: toBool,
+                    HOST: toInt(),
+                    PORT: withDefault(toInt(), 3000),
+                    MISSING_REQ: withRequired(toString()),
+                    MISSING_BARE: toBool(),
                 })
             );
         } catch (e: any) {
             const lines = e.message.trimStart().split("\n");
             expect(lines).toHaveLength(3);
             // HOST fails transform — has source and line
-            expect(lines[0]).toBe(".env.basic:L1: HOST: failed to convert 'localhost' to a number");
+            expect(lines[0]).toBe(
+                ".env.basic:L1: HOST: 'localhost' is not a valid integer"
+            );
             // MISSING_REQ — no source
             expect(lines[1]).toBe("MISSING_REQ: is required but is missing");
             // MISSING_BARE — no source

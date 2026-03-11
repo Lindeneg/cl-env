@@ -6,7 +6,6 @@ import type {
     SchemaParser,
     TransformContext,
     Config,
-    RadixFn,
     InferValueFromTransformFn,
     SafeCamelCase,
     ParsedEntry,
@@ -21,7 +20,6 @@ export type LoadEnvOpts = {
     includeProcessEnv?: "fallback" | "override" | false;
     logger?: Logger | boolean;
     schemaParser?: SchemaParser;
-    radix?: RadixFn;
 };
 
 export type ResolveEnvResult<TOpts extends LoadEnvOpts, TConfig extends Config> = Result<
@@ -66,7 +64,7 @@ export function parseFileContents(
         log?.("verbose", `parsed ${file}: ${entries.length} entries`);
         if (log) {
             for (const w of warnings) {
-                log("warn", `${file}:${w.message}`);
+                log("warn", `${file}:L${w.line}: ${w.message}`);
             }
         }
     }
@@ -105,12 +103,11 @@ export function resolveEnv<const TOpts extends LoadEnvOpts, TConfig extends Conf
     const baseCtx: TransformContext = {
         expandedEnv,
         ...(opts.schemaParser && {schemaParser: opts.schemaParser}),
-        ...(opts.radix && {radix: opts.radix}),
         ...(log && {log}),
     };
 
     const allEntries = parseFileContents(fileContents, errors, log);
-    if (allEntries.length === 0 && errors.length > 0) return failure(errors) as any;
+    if (allEntries.length === 0 && errors.length > 0) return failure(errors);
     const deduped = deduplicate(allEntries, log);
 
     if (log) checkUnknownKeys(deduped, config, log);
@@ -190,11 +187,11 @@ export function resolveEnv<const TOpts extends LoadEnvOpts, TConfig extends Conf
         }
     }
 
-    if (errors.length) return failure(errors) as any;
+    if (errors.length) return failure(errors);
 
     if (log) log("debug", `successfully loaded ${Object.keys(env).length} vars`);
 
-    return success(env as any) as any;
+    return success(env as any);
 }
 
 function toCamelCase(s: string): string {
@@ -253,7 +250,7 @@ function expandEntries(deduped: Map<string, ParsedEntry>, log?: Logger) {
         }
     }
 
-    // Kahn's algorithm — topological sort
+    // kahn's algorithm
     const queue: string[] = [];
     for (const [key, degree] of inDegree) {
         if (degree === 0) queue.push(key);
@@ -280,7 +277,7 @@ function expandEntries(deduped: Map<string, ParsedEntry>, log?: Logger) {
         }
     }
 
-    // handle cyclic entries — warn and expand best-effort
+    // handle cyclic entries, warn and expand best-effort
     if (order.length < deduped.size) {
         const orderSet = new Set(order);
         for (const [key, entry] of deduped) {

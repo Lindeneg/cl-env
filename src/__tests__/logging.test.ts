@@ -17,7 +17,7 @@ describe("logging", () => {
 
     it("calls custom logger function", () => {
         const {messages, logger} = capture();
-        loadEnv(opts([".env.basic"], {logger}), {HOST: toString});
+        loadEnv(opts([".env.basic"], {logger}), {HOST: toString()});
 
         expect(messages.some((m) => m.level === "verbose")).toBe(true);
         expect(messages.some((m) => m.level === "debug")).toBe(true);
@@ -30,7 +30,7 @@ describe("logging", () => {
         const spyError = vi.spyOn(console, "error").mockImplementation(() => {});
         loadEnv(
             {files: [".env.basic"], transformKeys: false, basePath: fixtures, logger: true},
-            {HOST: toString}
+            {HOST: toString()}
         );
         spyLog.mockRestore();
         spyDebug.mockRestore();
@@ -40,7 +40,7 @@ describe("logging", () => {
 
     it("logs duplicate key warnings with source info", () => {
         const {messages, logger} = capture();
-        loadEnv(opts([".env.duplicate"], {logger}), {KEY: toString, OTHER: toString});
+        loadEnv(opts([".env.duplicate"], {logger}), {KEY: toString(), OTHER: toString()});
 
         const dupWarning = messages.find(
             (m) => m.level === "warn" && m.message.includes("duplicate key")
@@ -59,7 +59,7 @@ describe("logging", () => {
                 basePath: fixtures,
                 logger,
             },
-            {PORT: toString, DEBUG: toString}
+            {PORT: toString(), DEBUG: toString()}
         );
 
         const dupWarnings = messages.filter(
@@ -75,7 +75,7 @@ describe("logging", () => {
 
     it("logs unknown key warnings with source info", () => {
         const {messages, logger} = capture();
-        loadEnv(opts([".env.basic"], {logger}), {HOST: toString});
+        loadEnv(opts([".env.basic"], {logger}), {HOST: toString()});
 
         const unknownWarnings = messages.filter(
             (m) => m.level === "warn" && m.message.includes("not a known key")
@@ -86,7 +86,7 @@ describe("logging", () => {
 
     it("logs success summary", () => {
         const {messages, logger} = capture();
-        loadEnv(opts([".env.basic"], {logger}), {HOST: toString, PORT: toInt});
+        loadEnv(opts([".env.basic"], {logger}), {HOST: toString(), PORT: toInt()});
 
         const summary = messages.find(
             (m) => m.level === "debug" && m.message.includes("successfully loaded")
@@ -98,9 +98,9 @@ describe("logging", () => {
     it("logs expansion with source info", () => {
         const {messages, logger} = capture();
         loadEnv(opts([".env.expansion"], {logger}), {
-            HOST: toString,
-            PORT: toString,
-            URL: toString,
+            HOST: toString(),
+            PORT: toString(),
+            URL: toString(),
         });
 
         const expandLog = messages.find(
@@ -113,7 +113,7 @@ describe("logging", () => {
     it("warns on unresolved variable expansion", () => {
         delete process.env.CLENV_UNDEFINED_VAR;
         const {messages, logger} = capture();
-        loadEnv(opts([".env.expansion"], {logger}), {MISSING_REF: toString});
+        loadEnv(opts([".env.expansion"], {logger}), {MISSING_REF: toString()});
 
         const unresolved = messages.find(
             (m) => m.level === "warn" && m.message.includes("not defined, left unexpanded")
@@ -126,7 +126,7 @@ describe("logging", () => {
         delete process.env.A;
         delete process.env.B;
         const {messages, logger} = capture();
-        loadEnv(opts([".env.cyclic"], {logger}), {A: toString, B: toString});
+        loadEnv(opts([".env.cyclic"], {logger}), {A: toString(), B: toString()});
 
         const cycleWarnings = messages.filter(
             (m) => m.level === "warn" && m.message.includes("cyclic reference")
@@ -139,8 +139,8 @@ describe("logging", () => {
     it("logs default values at debug level", () => {
         const {messages, logger} = capture();
         loadEnv(opts([".env.missing"], {logger}), {
-            PRESENT: toString,
-            ABSENT: withDefault(toInt, 9999),
+            PRESENT: toString(),
+            ABSENT: withDefault(toInt(), 9999),
         });
 
         const defaultLog = messages.find(
@@ -159,7 +159,7 @@ describe("logging", () => {
                 logger,
                 includeProcessEnv: "fallback",
             },
-            {HOST: toString}
+            {HOST: toString()}
         );
 
         const mergeLog = messages.find(
@@ -179,7 +179,7 @@ describe("logging", () => {
                 logger,
                 includeProcessEnv: "override",
             },
-            {HOST: toString}
+            {HOST: toString()}
         );
         delete process.env.HOST;
 
@@ -200,7 +200,7 @@ describe("logging", () => {
 
         loadEnv(
             {files: [".env.basic"], transformKeys: false, basePath: fixtures, logger: true},
-            {HOST: toString}
+            {HOST: toString()}
         );
 
         // collect all formatted messages across all console methods
@@ -238,7 +238,7 @@ describe("logging", () => {
 
         loadEnv(
             {files: [".env.basic"], transformKeys: false, basePath: fixtures, logger: true},
-            {HOST: toString}
+            {HOST: toString()}
         );
 
         // verbose goes to console.log — should have dim (\x1b[2m)
@@ -280,7 +280,7 @@ describe("logging", () => {
 
         loadEnv(
             {files: [".env.basic"], transformKeys: false, basePath: fixtures, logger: true},
-            {HOST: toString}
+            {HOST: toString()}
         );
 
         const allCalls = [
@@ -315,7 +315,7 @@ describe("logging", () => {
         const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
         const spyDebug = vi.spyOn(console, "debug").mockImplementation(() => {});
 
-        loadEnv(opts([".env.basic"]), {HOST: toString});
+        loadEnv(opts([".env.basic"]), {HOST: toString()});
 
         expect(spy).not.toHaveBeenCalled();
         expect(spyDebug).not.toHaveBeenCalled();

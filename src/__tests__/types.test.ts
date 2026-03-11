@@ -15,6 +15,11 @@ import {
     withDefault,
     withRequired,
     withOptional,
+    refine,
+    inRange,
+    nonEmpty,
+    minLength,
+    maxLength,
     success,
     failure,
     type SchemaParser,
@@ -33,8 +38,8 @@ describe("type inference", () => {
 
         const result = unwrap(
             loadEnv(opts([".env.complex"]), {
-                DATABASE_URL: withRequired(toString),
-                API_KEY: withRequired(toString),
+                DATABASE_URL: withRequired(toString()),
+                API_KEY: withRequired(toString()),
                 JSON_CONFIG: toJSON<SomeType>(),
                 TAGS: toStringArray(),
                 NUMBERS: toIntArray(),
@@ -66,10 +71,10 @@ describe("type inference", () => {
             loadEnv(
                 {files: [".env.basic"], transformKeys: true, basePath: fixtures},
                 {
-                    HOST: toString,
-                    PORT: toInt,
-                    DEBUG: toBool,
-                    APP_NAME: toString,
+                    HOST: toString(),
+                    PORT: toInt(),
+                    DEBUG: toBool(),
+                    APP_NAME: toString(),
                 }
             )
         );
@@ -96,7 +101,7 @@ describe("type inference", () => {
         const result = unwrap(
             loadEnv(
                 {files: [".env.transformkeys"], transformKeys: true, basePath: fixtures},
-                {FOO_BAR: toString, helloThere: toString}
+                {FOO_BAR: toString(), helloThere: toString()}
             )
         );
 
@@ -117,8 +122,8 @@ describe("type inference", () => {
     it("infers withDefault type correctly", () => {
         const result = unwrap(
             loadEnv(opts([".env.missing"]), {
-                PRESENT: withRequired(toString),
-                ABSENT: withDefault(toInt, 9999),
+                PRESENT: withRequired(toString()),
+                ABSENT: withDefault(toInt(), 9999),
             })
         );
 
@@ -139,8 +144,8 @@ describe("type inference", () => {
     it("infers withOptional type as T | undefined", () => {
         const result = unwrap(
             loadEnv(opts([".env.missing"]), {
-                PRESENT: withRequired(toString),
-                ABSENT: withOptional(toInt),
+                PRESENT: withRequired(toString()),
+                ABSENT: withOptional(toInt()),
             })
         );
 
@@ -203,7 +208,7 @@ describe("type inference", () => {
                 },
                 {
                     JSON_CONFIG: toJSON<Config>({}),
-                    API_KEY: withDefault(toString, "none"),
+                    API_KEY: withDefault(toString(), "none"),
                 }
             )
         );
@@ -223,7 +228,7 @@ describe("type inference", () => {
     });
 
     it("infers toBool as boolean, not true | false", () => {
-        const result = unwrap(loadEnv(opts([".env.basic"]), {DEBUG: toBool}));
+        const result = unwrap(loadEnv(opts([".env.basic"]), {DEBUG: toBool()}));
 
         type assertion = Expect<Equal<typeof result, {DEBUG: boolean}>>;
         expect(result.DEBUG).toBe(true);
@@ -290,13 +295,13 @@ describe("type inference", () => {
             loadEnv(
                 {files: [".env.complex"], transformKeys: true, basePath: fixtures},
                 {
-                    DATABASE_URL: withRequired(toString),
-                    API_KEY: withRequired(toString),
+                    DATABASE_URL: withRequired(toString()),
+                    API_KEY: withRequired(toString()),
                     JSON_CONFIG: toJSON<JsonShape>(),
                     TAGS: toStringArray(),
                     NUMBERS: toIntArray(),
-                    MULTILINE: toString,
-                    SINGLE_NO_EXPAND: toString,
+                    MULTILINE: toString(),
+                    SINGLE_NO_EXPAND: toString(),
                 }
             )
         );
@@ -325,5 +330,109 @@ describe("type inference", () => {
             multiline: "line1\nline2\nline3",
             singleNoExpand: "keep\\nraw",
         });
+    });
+
+    it("infers refine type correctly", () => {
+        const result = unwrap(
+            loadEnv(opts([".env.basic"]), {
+                PORT: withRequired(refine(toInt(), inRange(1, 65535))),
+            })
+        );
+
+        type assertion = Expect<Equal<typeof result, {PORT: number}>>;
+        expect(result.PORT).toBe(3000);
+    });
+
+    it("infers withOptional + refine as T | undefined", () => {
+        const result = unwrap(
+            loadEnv(opts([".env.missing"]), {
+                PRESENT: toString(),
+                ABSENT: withOptional(refine(toString(), nonEmpty())),
+            })
+        );
+
+        type assertion = Expect<
+            Equal<typeof result, {PRESENT: string; ABSENT: string | undefined}>
+        >;
+        expect(result.PRESENT).toBe("here");
+        expect(result.ABSENT).toBeUndefined();
+    });
+
+    it("infers refine with array transforms", () => {
+        const result = unwrap(
+            loadEnv(opts([".env.complex"]), {
+                TAGS: refine(toStringArray(), maxLength(10)),
+            })
+        );
+
+        type assertion = Expect<Equal<typeof result, {TAGS: string[]}>>;
+        expect(result.TAGS).toEqual(["foo", "bar", "baz"]);
+    });
+
+    it("infers withDefault + refine type correctly", () => {
+        const result = unwrap(
+            loadEnv(opts([".env.missing"]), {
+                ABSENT: withDefault(refine(toInt(), inRange(0, 100)), 50),
+            })
+        );
+
+        type assertion = Expect<Equal<typeof result, {ABSENT: number}>>;
+        expect(result.ABSENT).toBe(50);
+    });
+
+    it("infers bare refine type (no wrapper)", () => {
+        const result = unwrap(
+            loadEnv(opts([".env.basic"]), {
+                PORT: refine(toInt(), inRange(1, 65535)),
+            })
+        );
+
+        type assertion = Expect<Equal<typeof result, {PORT: number}>>;
+        expect(result.PORT).toBe(3000);
+    });
+
+    it("infers refine with toEnum as narrowed union", () => {
+        const result = unwrap(
+            loadEnv(opts([".env.custom"]), {
+                LOG_LEVEL: refine(
+                    toEnum("debug", "info", "warn", "error"),
+                    minLength(1)
+                ),
+            })
+        );
+
+        type assertion = Expect<
+            Equal<typeof result, {LOG_LEVEL: "debug" | "info" | "warn" | "error"}>
+        >;
+        expect(result.LOG_LEVEL).toBe("debug");
+    });
+
+    it("infers withOptional + refine + toEnum as union | undefined", () => {
+        const result = unwrap(
+            loadEnv(opts([".env.missing"]), {
+                ABSENT: withOptional(
+                    refine(toEnum("a", "b", "c"), minLength(1))
+                ),
+            })
+        );
+
+        type assertion = Expect<
+            Equal<typeof result, {ABSENT: "a" | "b" | "c" | undefined}>
+        >;
+        expect(result.ABSENT).toBeUndefined();
+    });
+
+    it("infers custom RefineCheck preserves transform type", () => {
+        const isEven = (key: string, val: number) =>
+            val % 2 === 0 ? success(val) : failure(`${key}: not even`);
+
+        const result = unwrap(
+            loadEnv(opts([".env.basic"]), {
+                PORT: refine(toInt(), isEven),
+            })
+        );
+
+        type assertion = Expect<Equal<typeof result, {PORT: number}>>;
+        expect(result.PORT).toBe(3000);
     });
 });

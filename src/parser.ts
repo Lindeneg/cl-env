@@ -1,6 +1,9 @@
 import type {ParsedEntry, ParseWarning} from "./types.js";
 
-export function parseDotenv(raw: string, source: string): {entries: ParsedEntry[]; warnings: ParseWarning[]} {
+export function parseDotenv(
+    raw: string,
+    source: string
+): {entries: ParsedEntry[]; warnings: ParseWarning[]} {
     // strip BOM
     if (raw.charCodeAt(0) === 0xfeff) {
         raw = raw.slice(1);
@@ -28,6 +31,31 @@ export function parseDotenv(raw: string, source: string): {entries: ParsedEntry[
     function skipToNewline() {
         while (pos < raw.length && raw[pos] !== "\n") pos++;
         if (pos < raw.length) advance();
+    }
+
+    function handleQuote(quote: "'" | "`", entryLine: number, key: string): string {
+        const start = pos + 1;
+        let terminated = false;
+        let value = "";
+        advance();
+        while (pos < raw.length) {
+            if (raw[pos] === quote) {
+                value = raw.slice(start, pos);
+                advance();
+                terminated = true;
+                break;
+            }
+            advance();
+        }
+        if (!terminated) {
+            value = raw.slice(start, pos);
+            const consumed = line - entryLine;
+            warnings.push({
+                line: entryLine,
+                message: `${key}: unterminated ${quote === "`" ? "backtick" : "single"} quote, consumed ${consumed} line(s) to EOF`,
+            });
+        }
+        return value;
     }
 
     while (pos < raw.length) {
@@ -68,7 +96,7 @@ export function parseDotenv(raw: string, source: string): {entries: ParsedEntry[
         if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
             warnings.push({
                 line: entryLine,
-                message: `L${entryLine}: ${key}: invalid key name (expected [A-Za-z_][A-Za-z0-9_]*)`,
+                message: `${key}: invalid key name (expected [A-Za-z_][A-Za-z0-9_]*)`,
             });
         }
 
@@ -131,53 +159,11 @@ export function parseDotenv(raw: string, source: string): {entries: ParsedEntry[
                 const consumed = line - entryLine;
                 warnings.push({
                     line: entryLine,
-                    message: `L${entryLine}: ${key}: unterminated double quote, consumed ${consumed} line(s) to EOF`,
+                    message: `${key}: unterminated double quote, consumed ${consumed} line(s) to EOF`,
                 });
             }
-        } else if (quote === "'") {
-            // single-quoted: literal, no escapes, multiline, use slice
-            const start = pos + 1;
-            let terminated = false;
-            advance();
-            while (pos < raw.length) {
-                if (raw[pos] === "'") {
-                    value = raw.slice(start, pos);
-                    advance();
-                    terminated = true;
-                    break;
-                }
-                advance();
-            }
-            if (!terminated) {
-                value = raw.slice(start, pos);
-                const consumed = line - entryLine;
-                warnings.push({
-                    line: entryLine,
-                    message: `L${entryLine}: ${key}: unterminated single quote, consumed ${consumed} line(s) to EOF`,
-                });
-            }
-        } else if (quote === "`") {
-            // backtick-quoted: literal, no escapes, multiline, use slice
-            const start = pos + 1;
-            let terminated = false;
-            advance();
-            while (pos < raw.length) {
-                if (raw[pos] === "`") {
-                    value = raw.slice(start, pos);
-                    advance();
-                    terminated = true;
-                    break;
-                }
-                advance();
-            }
-            if (!terminated) {
-                value = raw.slice(start, pos);
-                const consumed = line - entryLine;
-                warnings.push({
-                    line: entryLine,
-                    message: `L${entryLine}: ${key}: unterminated backtick quote, consumed ${consumed} line(s) to EOF`,
-                });
-            }
+        } else if (quote === "'" || quote === "`") {
+            value = handleQuote(quote, entryLine, key);
         } else {
             // unquoted: single line, inline comments, trim trailing whitespace, use slice
             // pos++ (not advance()) is safe here: loop breaks on \n so line counter stays correct
@@ -199,7 +185,7 @@ export function parseDotenv(raw: string, source: string): {entries: ParsedEntry[
             if (commentAt < 0 && value.length < rawValue.length) {
                 warnings.push({
                     line: entryLine,
-                    message: `L${entryLine}: ${key}: suspicious trailing whitespace in unquoted value`,
+                    message: `${key}: suspicious trailing whitespace in unquoted value`,
                 });
             }
         }

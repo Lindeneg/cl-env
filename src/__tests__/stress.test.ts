@@ -2,7 +2,7 @@ import {writeFileSync, mkdirSync, rmSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
 import {describe, it, expect} from "vitest";
-import {loadEnv, toString, withOptional} from "../index.js";
+import {loadEnv, toString, withOptional, type TransformFn} from "../index.js";
 
 const fixtures = join(import.meta.dirname, "fixtures");
 const opts = (files: string[], extra: Partial<Parameters<typeof loadEnv>[0]> = {}) =>
@@ -12,10 +12,10 @@ const opts = (files: string[], extra: Partial<Parameters<typeof loadEnv>[0]> = {
 
 describe("large files", () => {
     it("parses a 10,000-entry .env file", () => {
-        const config: Record<string, typeof toString> = {};
-        config.KEY_00001 = toString;
-        config.KEY_05000 = toString;
-        config.KEY_10000 = toString;
+        const config: Record<string, TransformFn> = {};
+        config.KEY_00001 = toString();
+        config.KEY_05000 = toString();
+        config.KEY_10000 = toString();
 
         const result = loadEnv(opts([".env.large"]), config);
         expect(result).toEqual({
@@ -29,9 +29,9 @@ describe("large files", () => {
     });
 
     it("parses all 10,000 entries when requested", () => {
-        const config: Record<string, typeof toString> = {};
+        const config: Record<string, TransformFn> = {};
         for (let i = 1; i <= 10000; i++) {
-            config[`KEY_${String(i).padStart(5, "0")}`] = toString;
+            config[`KEY_${String(i).padStart(5, "0")}`] = toString();
         }
 
         const result = loadEnv(opts([".env.large"]), config);
@@ -83,7 +83,7 @@ describe("fuzz", () => {
         expect(() => {
             loadEnv(
                 {files: [".env"], transformKeys: false, basePath: tmpDir},
-                {ANYTHING: withOptional(toString)}
+                {ANYTHING: withOptional(toString())}
             );
         }).not.toThrow();
 
@@ -105,8 +105,8 @@ describe("fuzz", () => {
         }
         writeFileSync(join(tmpDir, ".env"), lines.join("\n") + "\n", "utf8");
 
-        const config: Record<string, typeof toString> = {};
-        for (const e of entries) config[e.key] = toString;
+        const config: Record<string, TransformFn> = {};
+        for (const e of entries) config[e.key] = toString();
 
         const result = loadEnv({files: [".env"], transformKeys: false, basePath: tmpDir}, config);
         expect(result.ok).toBe(true);
@@ -134,7 +134,7 @@ describe("fuzz", () => {
         }
         writeFileSync(join(tmpDir, ".env"), lines.join("\n") + "\n", "utf8");
 
-        const config: Record<string, typeof toString> = {BASE: toString, V500: toString};
+        const config: Record<string, TransformFn> = {BASE: toString(), V500: toString()};
         expect(() => {
             loadEnv({files: [".env"], transformKeys: false, basePath: tmpDir}, config);
         }).not.toThrow();
