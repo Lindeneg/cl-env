@@ -60,7 +60,7 @@ If your framework already manages `process.env` for you, validation-only librari
 
 ```ts
 import {loadEnv, unwrap, toString, toInt, toFloat, toBool, toEnum, refine, inRange,
-        withOptional, withDefault, withRequired } from "@lindeneg/cl-env";
+        withOptional, withDefault, withRequired} from "@lindeneg/cl-env";
 
 const env = unwrap(
     loadEnv(
